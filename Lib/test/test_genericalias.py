@@ -65,6 +65,14 @@ class BaseTest(unittest.TestCase):
         self.assertIs(t.__origin__, MyList)
         self.assertEqual(t.__parameters__, (int,))
 
+    def test_repr(self):
+        class MyList(list):
+            pass
+        self.assertEqual(repr(list[str]), 'list[str]')
+        self.assertEqual(repr(list[()]), 'list[()]')
+        self.assertEqual(repr(MyList[int]), 'test.test_genericalias.BaseTest.test_repr.<locals>.MyList[int]')
+        self.assertEqual(repr(list[str]()), '[]')  # instances should keep their normal repr
+
 
 if __name__ == "__main__":
     unittest.main()

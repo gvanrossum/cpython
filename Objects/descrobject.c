@@ -1821,12 +1821,75 @@ ga_traverse(PyObject *self, visitproc visit, void *arg)
     return 0;
 }
 
-// TODO: nicely format origin and each parameter
+static PyObject*
+ga_repr_item(PyObject *p)
+{
+    PyObject *qualname = PyObject_GetAttrString(p, "__qualname__");
+    PyObject *module = PyObject_GetAttrString(p, "__module__");
+    PyObject *r = NULL;
+
+    if (PyObject_HasAttrString(p, "__origin__") &&
+        PyObject_HasAttrString(p, "__parameters__"))
+    {
+        // It looks like a GenericAlias
+        r = PyObject_Repr(p);
+    }
+    else if (p == Py_Ellipsis) {
+        // The Ellipsis object
+        r = PyUnicode_FromString("...");
+    }
+    else if (qualname != NULL && module != NULL) {
+        // Looks like a class
+        if (PyUnicode_CompareWithASCIIString(module, "builtins") == 0) {
+            // builtins don't need a module name
+            r = qualname;
+            Py_DECREF(module);
+        }
+        else {
+            r = PyUnicode_FromFormat("%U.%U", module, qualname);
+            Py_DECREF(qualname);
+            Py_DECREF(module);
+        }
+    }
+    else {
+        // fallback
+        r = PyObject_Repr(p);
+    }
+    return r;
+}
+
 static PyObject *
 ga_repr(PyObject *self)
 {
     gaobject *alias = (gaobject *)self;
-    return PyUnicode_FromFormat("%R[%R]", alias->origin, alias->parameters);
+    PyObject *origin = NULL;
+    PyObject *reprs = NULL;
+    PyObject *params = NULL;
+    PyObject *alias_repr = NULL;
+    PyObject *sep = PyUnicode_FromString(", ");
+    Py_ssize_t len = PyTuple_Size(alias->parameters);
+
+    reprs = PyList_New(len);
+    for (Py_ssize_t i = 0; i < len; i++) {
+        PyObject *p = PyTuple_GET_ITEM(alias->parameters, i);
+        PyList_SET_ITEM(reprs, i, ga_repr_item(p));
+    }
+
+    origin = ga_repr_item(alias->origin);
+    if (len == 0) {
+        // for something like tuple[()] we should print a "()"
+        int err = PyList_Append(reprs, PyUnicode_FromString("()"));
+        if (err == -1)
+            return NULL;
+    }
+    params = PyUnicode_Join(sep, reprs);
+    alias_repr = PyUnicode_FromFormat("%U[%U]", origin, params);
+
+    Py_DECREF(origin);
+    Py_DECREF(reprs);
+    Py_DECREF(params);
+    Py_DECREF(sep);
+    return alias_repr;
 }
 
 static PyObject *
