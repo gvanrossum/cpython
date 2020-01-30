@@ -1083,6 +1083,10 @@ class Protocol(Generic, metaclass=_ProtocolMeta):
 
             # Second, perform the actual structural compatibility check.
             for attr in _get_protocol_attrs(cls):
+                # Requiring people to implement this on e.g. iterable classes
+                # would break existing code
+                if attr == '__class_getitem__':
+                    continue
                 for base in other.__mro__:
                     # Check if the members appears in the class dictionary...
                     if attr in base.__dict__:
