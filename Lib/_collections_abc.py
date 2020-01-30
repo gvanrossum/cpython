@@ -67,6 +67,10 @@ async_generator = type(_ag)
 del _ag
 
 
+# needed for making various ABCs generic
+GenericAlias = type(list[str])
+
+
 ### ONE-TRICK PONIES ###
 
 def _check_methods(C, *methods):
@@ -110,6 +114,10 @@ class Awaitable(metaclass=ABCMeta):
             return _check_methods(C, "__await__")
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 class Coroutine(Awaitable):
 
@@ -151,6 +159,10 @@ class Coroutine(Awaitable):
             return _check_methods(C, '__await__', 'send', 'throw', 'close')
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 Coroutine.register(coroutine)
 
@@ -168,6 +180,10 @@ class AsyncIterable(metaclass=ABCMeta):
         if cls is AsyncIterable:
             return _check_methods(C, "__aiter__")
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
 
 
 class AsyncIterator(AsyncIterable):
@@ -187,6 +203,10 @@ class AsyncIterator(AsyncIterable):
         if cls is AsyncIterator:
             return _check_methods(C, "__anext__", "__aiter__")
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
 
 
 class AsyncGenerator(AsyncIterator):
@@ -236,6 +256,10 @@ class AsyncGenerator(AsyncIterator):
                                   'asend', 'athrow', 'aclose')
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 AsyncGenerator.register(async_generator)
 
@@ -255,6 +279,10 @@ class Iterable(metaclass=ABCMeta):
             return _check_methods(C, "__iter__")
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 class Iterator(Iterable):
 
@@ -273,6 +301,11 @@ class Iterator(Iterable):
         if cls is Iterator:
             return _check_methods(C, '__iter__', '__next__')
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 Iterator.register(bytes_iterator)
 Iterator.register(bytearray_iterator)
@@ -304,6 +337,10 @@ class Reversible(Iterable):
         if cls is Reversible:
             return _check_methods(C, "__reversed__", "__iter__")
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
 
 
 class Generator(Iterator):
@@ -353,6 +390,11 @@ class Generator(Iterator):
                                   'send', 'throw', 'close')
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 Generator.register(generator)
 
 
@@ -385,6 +427,11 @@ class Container(metaclass=ABCMeta):
             return _check_methods(C, "__contains__")
         return NotImplemented
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 class Collection(Sized, Iterable, Container):
 
     __slots__ = ()
@@ -394,6 +441,11 @@ class Collection(Sized, Iterable, Container):
         if cls is Collection:
             return _check_methods(C,  "__len__", "__iter__", "__contains__")
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 class Callable(metaclass=ABCMeta):
 
@@ -408,6 +460,10 @@ class Callable(metaclass=ABCMeta):
         if cls is Callable:
             return _check_methods(C, "__call__")
         return NotImplemented
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
 
 
 ### SETS ###
@@ -550,6 +606,11 @@ class Set(Collection):
             h = 590923713
         return h
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 Set.register(frozenset)
 
 
@@ -632,6 +693,11 @@ class MutableSet(Set):
                 self.discard(value)
         return self
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 MutableSet.register(set)
 
 
@@ -688,6 +754,11 @@ class Mapping(Collection):
 
     __reversed__ = None
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 Mapping.register(mappingproxy)
 
 
@@ -704,6 +775,10 @@ class MappingView(Sized):
     def __repr__(self):
         return '{0.__class__.__name__}({0._mapping!r})'.format(self)
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 class KeysView(MappingView, Set):
 
@@ -718,6 +793,11 @@ class KeysView(MappingView, Set):
 
     def __iter__(self):
         yield from self._mapping
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 KeysView.register(dict_keys)
 
@@ -743,6 +823,11 @@ class ItemsView(MappingView, Set):
         for key in self._mapping:
             yield (key, self._mapping[key])
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 ItemsView.register(dict_items)
 
 
@@ -760,6 +845,11 @@ class ValuesView(MappingView, Collection):
     def __iter__(self):
         for key in self._mapping:
             yield self._mapping[key]
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 ValuesView.register(dict_values)
 
@@ -847,6 +937,11 @@ class MutableMapping(Mapping):
             self[key] = default
         return default
 
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
+
 MutableMapping.register(dict)
 
 
@@ -913,6 +1008,11 @@ class Sequence(Reversible, Collection):
     def count(self, value):
         'S.count(value) -> integer -- return number of occurrences of value'
         return sum(1 for v in self if v is value or v == value)
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 Sequence.register(tuple)
 Sequence.register(str)
@@ -999,6 +1099,11 @@ class MutableSequence(Sequence):
     def __iadd__(self, values):
         self.extend(values)
         return self
+
+    def __class_getitem__(cls, item):
+        """Internal: PEP 585."""
+        return GenericAlias(cls, item)
+
 
 MutableSequence.register(list)
 MutableSequence.register(bytearray)  # Multiply inheriting, see ByteString
