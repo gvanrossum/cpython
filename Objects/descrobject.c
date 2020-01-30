@@ -1947,7 +1947,8 @@ ga_mro_entries(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-ga_instancecheck(PyObject *self, PyObject *Py_UNUSED(ignored)) {
+ga_instancecheck(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
     return PyErr_Format(PyExc_TypeError,
                         "TypeError: Subscripted generics cannot be used with"
                         " class and instance checks",
@@ -1955,7 +1956,8 @@ ga_instancecheck(PyObject *self, PyObject *Py_UNUSED(ignored)) {
 }
 
 static PyObject *
-ga_subclasscheck(PyObject *self, PyObject *Py_UNUSED(ignored)) {
+ga_subclasscheck(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
     return PyErr_Format(PyExc_TypeError,
                         "TypeError: Subscripted generics cannot be used with"
                         " class and instance checks",
