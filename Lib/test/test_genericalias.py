@@ -95,6 +95,17 @@ class BaseTest(unittest.TestCase):
         self.assertIs(a.__origin__, list)
         self.assertEqual(a.__parameters__, (int,))
 
+    def test_isinstance(self):
+        self.assertTrue(isinstance([], list))
+        with self.assertRaises(TypeError):
+            isinstance([], list[str])
+
+    def test_issubclass(self):
+        class T(list): ...
+        self.assertTrue(issubclass(T, list))
+        with self.assertRaises(TypeError):
+            issubclass(T, list[str])
+
 
 if __name__ == "__main__":
     unittest.main()
