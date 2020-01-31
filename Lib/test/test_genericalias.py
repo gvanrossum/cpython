@@ -1,29 +1,46 @@
 """Tests for C-implemented GenericAlias."""
 
 import unittest
-from collections import defaultdict, deque
+from collections import (
+    defaultdict, deque, OrderedDict, Counter, UserDict, UserList
+)
+from collections.abc import *
 from contextlib import AbstractContextManager, AbstractAsyncContextManager
 from io import IOBase
 from re import Pattern, Match
+
 
 class BaseTest(unittest.TestCase):
     """Test basics."""
 
     def test_subscriptable(self):
         for t in (type, tuple, list, dict, set, frozenset,
-                  defaultdict, deque,
+                  defaultdict, deque, 
+                  OrderedDict, Counter, UserDict, UserList,
                   IOBase,
                   Pattern, Match,
                   AbstractContextManager, AbstractAsyncContextManager,
+                  Awaitable, Coroutine,
+                  AsyncIterable, AsyncIterator,
+                  AsyncGenerator, Generator,
+                  Iterable, Iterator,
+                  Reversible,
+                  Container, Collection,
+                  Callable,
+                  Set, MutableSet,
+                  Mapping, MutableMapping, MappingView,
+                  KeysView, ItemsView, ValuesView,
+                  Sequence, MutableSequence,
                   ):
             tname = t.__name__
             with self.subTest(f"Testing {tname}"):
                 alias = t[int]
                 self.assertIs(alias.__origin__, t)
-                self.assertEqual(alias.__parameters__, (int,))
+                self.assertEqual(alias.__args__, (int,))
+                self.assertEqual(alias.__parameters__, ())
 
     def test_unsubscriptable(self):
-        for t in int, str, float:
+        for t in int, str, float, Sized, Hashable:
             tname = t.__name__
             with self.subTest(f"Testing {tname}"):
                 with self.assertRaises(TypeError):
@@ -77,7 +94,8 @@ class BaseTest(unittest.TestCase):
             pass
         t = MyList[int]
         self.assertIs(t.__origin__, MyList)
-        self.assertEqual(t.__parameters__, (int,))
+        self.assertEqual(t.__args__, (int,))
+        self.assertEqual(t.__parameters__, ())
 
     def test_repr(self):
         class MyList(list):
@@ -93,7 +111,66 @@ class BaseTest(unittest.TestCase):
         a = types.GenericAlias(list, int)
         self.assertEqual(str(a), 'list[int]')
         self.assertIs(a.__origin__, list)
-        self.assertEqual(a.__parameters__, (int,))
+        self.assertEqual(a.__args__, (int,))
+        self.assertEqual(a.__parameters__, ())
+
+    def test_parameters(self):
+        from typing import TypeVar
+        T = TypeVar('T')
+        K = TypeVar('K')
+        V = TypeVar('V')
+        D0 = dict[str, int]
+        self.assertEqual(D0.__args__, (str, int))
+        self.assertEqual(D0.__parameters__, ())
+        D1a = dict[str, V]
+        self.assertEqual(D1a.__args__, (str, V))
+        self.assertEqual(D1a.__parameters__, (V,))
+        D1b = dict[K, int]
+        self.assertEqual(D1b.__args__, (K, int))
+        self.assertEqual(D1b.__parameters__, (K,))
+        D2a = dict[K, V]
+        self.assertEqual(D2a.__args__, (K, V))
+        self.assertEqual(D2a.__parameters__, (K, V))
+        D2b = dict[T, T]
+        self.assertEqual(D2b.__args__, (T, T))
+        self.assertEqual(D2b.__parameters__, (T,))
+        L0 = list[str]
+        self.assertEqual(L0.__args__, (str,))
+        self.assertEqual(L0.__parameters__, ())
+        L1 = list[T]
+        self.assertEqual(L1.__args__, (T,))
+        self.assertEqual(L1.__parameters__, (T,))
+
+    def test_parameter_chaining(self):
+        from typing import TypeVar
+        T = TypeVar('T')
+        self.assertEqual(list[T][int], list[int])
+        self.assertEqual(dict[str, T][int], dict[str, int])
+        self.assertEqual(dict[T, int][str], dict[str, int])
+        self.assertEqual(dict[T, T][int], dict[int, int])
+        with self.assertRaises(TypeError):
+            list[int][int]
+            dict[T, int][str, int]
+            dict[str, T][str, int]
+            dict[T, T][str, int]
+
+    def test_equality(self):
+        self.assertEqual(list[int], list[int])
+        self.assertEqual(dict[str, int], dict[str, int])
+        self.assertNotEqual(dict[str, int], dict[str, str])
+        self.assertNotEqual(list, list[int])
+        self.assertNotEqual(list[int], list)
+
+    def test_isinstance(self):
+        self.assertTrue(isinstance([], list))
+        with self.assertRaises(TypeError):
+            isinstance([], list[str])
+
+    def test_issubclass(self):
+        class L(list): ...
+        self.assertTrue(issubclass(L, list))
+        with self.assertRaises(TypeError):
+            issubclass(L, list[str])
 
     def test_type_generic(self):
         t = type[int]
