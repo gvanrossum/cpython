@@ -8,6 +8,7 @@ Unit tests are in test_collections.
 
 from abc import ABCMeta, abstractmethod
 import sys
+from types import GenericAlias
 
 __all__ = ["Awaitable", "Coroutine",
            "AsyncIterable", "AsyncIterator", "AsyncGenerator",
@@ -65,10 +66,6 @@ async def _ag(): yield
 _ag = _ag()
 async_generator = type(_ag)
 del _ag
-
-
-# needed for making various ABCs generic
-GenericAlias = type(list[str])
 
 
 ### ONE-TRICK PONIES ###
