@@ -1,6 +1,7 @@
 """Tests for C-implemented GenericAlias."""
 
 import unittest
+import pickle
 from collections import (
     defaultdict, deque, OrderedDict, Counter, UserDict, UserList
 )
@@ -8,6 +9,7 @@ from collections.abc import *
 from contextlib import AbstractContextManager, AbstractAsyncContextManager
 from io import IOBase
 from re import Pattern, Match
+from types import GenericAlias
 
 
 class BaseTest(unittest.TestCase):
@@ -171,6 +173,11 @@ class BaseTest(unittest.TestCase):
         self.assertTrue(issubclass(L, list))
         with self.assertRaises(TypeError):
             issubclass(L, list[str])
+
+    def test_pickle(self):
+        alias = GenericAlias(list, str)
+        s = pickle.dumps(alias)
+        self.assertEqual(alias, pickle.loads(s))
 
 
 if __name__ == "__main__":

@@ -2077,10 +2077,18 @@ ga_subclasscheck(PyObject *self, PyObject *Py_UNUSED(ignored))
                         self);
 }
 
+static PyObject *
+ga_reduce(gaobject *self, PyObject *Py_UNUSED(ignored))
+{
+    return Py_BuildValue("(O(OOO))", Py_TYPE(self),
+                         self->origin, self->args, self->parameters);
+}
+
 static PyMethodDef ga_methods[] = {
     {"__mro_entries__", ga_mro_entries, METH_O},
     {"__instancecheck__", ga_instancecheck, METH_O},
     {"__subclasscheck__", ga_subclasscheck, METH_O},
+    {"__reduce__", ga_reduce, METH_NOARGS},
     {0}
 };
 
