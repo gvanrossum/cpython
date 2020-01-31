@@ -10,7 +10,7 @@ class BaseTest(unittest.TestCase):
     """Test basics."""
 
     def test_subscriptable(self):
-        for t in (tuple, list, dict, set, frozenset,
+        for t in (type, tuple, list, dict, set, frozenset,
                   defaultdict, deque,
                   IOBase,
                   Pattern, Match,
@@ -94,6 +94,19 @@ class BaseTest(unittest.TestCase):
         self.assertEqual(str(a), 'list[int]')
         self.assertIs(a.__origin__, list)
         self.assertEqual(a.__parameters__, (int,))
+
+    def test_type_generic(self):
+        t = type[int]
+        Test = t('Test', (), {})
+        self.assertTrue(isinstance(Test, type))
+        test = Test()
+        self.assertEqual(t(test), Test)
+
+    def test_type_subclass_generic(self):
+        class MyType(type):
+            pass
+        with self.assertRaises(TypeError):
+            MyType[int]
 
 
 if __name__ == "__main__":
