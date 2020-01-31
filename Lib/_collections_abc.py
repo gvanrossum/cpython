@@ -156,10 +156,6 @@ class Coroutine(Awaitable):
             return _check_methods(C, '__await__', 'send', 'throw', 'close')
         return NotImplemented
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 Coroutine.register(coroutine)
 
@@ -200,10 +196,6 @@ class AsyncIterator(AsyncIterable):
         if cls is AsyncIterator:
             return _check_methods(C, "__anext__", "__aiter__")
         return NotImplemented
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 class AsyncGenerator(AsyncIterator):
@@ -253,10 +245,6 @@ class AsyncGenerator(AsyncIterator):
                                   'asend', 'athrow', 'aclose')
         return NotImplemented
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 AsyncGenerator.register(async_generator)
 
@@ -299,10 +287,6 @@ class Iterator(Iterable):
             return _check_methods(C, '__iter__', '__next__')
         return NotImplemented
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 Iterator.register(bytes_iterator)
 Iterator.register(bytearray_iterator)
@@ -334,10 +318,6 @@ class Reversible(Iterable):
         if cls is Reversible:
             return _check_methods(C, "__reversed__", "__iter__")
         return NotImplemented
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 class Generator(Iterator):
@@ -387,10 +367,6 @@ class Generator(Iterator):
                                   'send', 'throw', 'close')
         return NotImplemented
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 Generator.register(generator)
 
@@ -438,10 +414,6 @@ class Collection(Sized, Iterable, Container):
         if cls is Collection:
             return _check_methods(C,  "__len__", "__iter__", "__contains__")
         return NotImplemented
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 class Callable(metaclass=ABCMeta):
@@ -603,10 +575,6 @@ class Set(Collection):
             h = 590923713
         return h
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 Set.register(frozenset)
 
@@ -690,10 +658,6 @@ class MutableSet(Set):
                 self.discard(value)
         return self
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 MutableSet.register(set)
 
@@ -751,10 +715,6 @@ class Mapping(Collection):
 
     __reversed__ = None
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 Mapping.register(mappingproxy)
 
@@ -791,10 +751,6 @@ class KeysView(MappingView, Set):
     def __iter__(self):
         yield from self._mapping
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 KeysView.register(dict_keys)
 
@@ -820,10 +776,6 @@ class ItemsView(MappingView, Set):
         for key in self._mapping:
             yield (key, self._mapping[key])
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 ItemsView.register(dict_items)
 
@@ -842,10 +794,6 @@ class ValuesView(MappingView, Collection):
     def __iter__(self):
         for key in self._mapping:
             yield self._mapping[key]
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 ValuesView.register(dict_values)
@@ -934,10 +882,6 @@ class MutableMapping(Mapping):
             self[key] = default
         return default
 
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
-
 
 MutableMapping.register(dict)
 
@@ -1005,10 +949,6 @@ class Sequence(Reversible, Collection):
     def count(self, value):
         'S.count(value) -> integer -- return number of occurrences of value'
         return sum(1 for v in self if v is value or v == value)
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 Sequence.register(tuple)
@@ -1096,10 +1036,6 @@ class MutableSequence(Sequence):
     def __iadd__(self, values):
         self.extend(values)
         return self
-
-    def __class_getitem__(cls, item):
-        """Internal: PEP 585."""
-        return GenericAlias(cls, item)
 
 
 MutableSequence.register(list)
