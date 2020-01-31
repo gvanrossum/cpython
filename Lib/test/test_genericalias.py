@@ -101,10 +101,10 @@ class BaseTest(unittest.TestCase):
             isinstance([], list[str])
 
     def test_issubclass(self):
-        class T(list): ...
-        self.assertTrue(issubclass(T, list))
+        class L(list): ...
+        self.assertTrue(issubclass(L, list))
         with self.assertRaises(TypeError):
-            issubclass(T, list[str])
+            issubclass(L, list[str])
 
 
 if __name__ == "__main__":
