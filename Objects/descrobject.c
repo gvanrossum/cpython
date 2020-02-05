@@ -1999,6 +1999,9 @@ static const char* const attr_exceptions[] = {
     "__args__",
     "__parameters__",
     "__mro_entries__",
+    "__reduce_ex__",
+    "__reduce__",
+    "__setstate__",
     NULL,
 };
 
@@ -2078,10 +2081,28 @@ ga_subclasscheck(PyObject *self, PyObject *Py_UNUSED(ignored))
 }
 
 static PyObject *
-ga_reduce(gaobject *self, PyObject *Py_UNUSED(ignored))
+ga_reduce(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
-    return Py_BuildValue("(O(OOO))", Py_TYPE(self),
-                         self->origin, self->args, self->parameters);
+    gaobject *alias = (gaobject *)self;
+    return Py_BuildValue("O(OO)(O)", Py_TYPE(alias),
+                         alias->origin, alias->args, alias->parameters);
+}
+
+static PyObject *
+ga_setstate(PyObject *self, PyObject *state)
+{
+    gaobject *alias = (gaobject *)self;
+    PyObject *parameters = NULL;
+    if (!PyTuple_Check(state)) {
+        PyErr_SetString(PyExc_TypeError, "state is not a tuple");
+        return NULL;
+    }
+    if (!PyArg_ParseTuple(state, "O", &parameters)) {
+        return NULL;
+    }
+    Py_INCREF(parameters);
+    alias->parameters = parameters;
+    Py_RETURN_NONE;
 }
 
 static PyMethodDef ga_methods[] = {
@@ -2089,6 +2110,7 @@ static PyMethodDef ga_methods[] = {
     {"__instancecheck__", ga_instancecheck, METH_O},
     {"__subclasscheck__", ga_subclasscheck, METH_O},
     {"__reduce__", ga_reduce, METH_NOARGS},
+    {"__setstate__", ga_setstate, METH_O},
     {0}
 };
 
@@ -2120,7 +2142,7 @@ ga_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 // - __eq__
 PyTypeObject Py_GenericAliasType = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    .tp_name = "GenericAlias",
+    .tp_name = "types.GenericAlias",
     .tp_basicsize = sizeof(gaobject),
     .tp_dealloc = ga_dealloc,
     .tp_repr = ga_repr,

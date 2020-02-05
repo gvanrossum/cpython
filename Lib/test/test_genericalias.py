@@ -11,6 +11,8 @@ from io import IOBase
 from re import Pattern, Match
 from types import GenericAlias
 
+from typing import TypeVar
+T = TypeVar('T')
 
 class BaseTest(unittest.TestCase):
     """Test basics."""
@@ -175,9 +177,12 @@ class BaseTest(unittest.TestCase):
             issubclass(L, list[str])
 
     def test_pickle(self):
-        alias = GenericAlias(list, str)
+        alias = GenericAlias(list, T)
         s = pickle.dumps(alias)
-        self.assertEqual(alias, pickle.loads(s))
+        loaded = pickle.loads(s)
+        self.assertEqual(alias.__origin__, loaded.__origin__)
+        self.assertEqual(alias.__args__, loaded.__args__)
+        self.assertEqual(alias.__parameters__, loaded.__parameters__)
 
 
 if __name__ == "__main__":
