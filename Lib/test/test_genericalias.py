@@ -178,6 +178,7 @@ class BaseTest(unittest.TestCase):
         self.assertTrue(isinstance(Test, type))
         test = Test()
         self.assertEqual(t(test), Test)
+        self.assertEqual(t(0), int)
 
     def test_type_subclass_generic(self):
         class MyType(type):
