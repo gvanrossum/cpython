@@ -1935,6 +1935,34 @@ tuple_index(PyObject *self, Py_ssize_t len, PyObject *item)
     return -1;
 }
 
+// tuple(t for t in args if isinstance(t, TypeVar))
+static PyObject *
+make_parameters(PyObject *args)
+{
+    Py_ssize_t len = PyTuple_GET_SIZE(args);
+    PyObject *parameters = PyTuple_New(len);
+    if (parameters == NULL)
+        return NULL;
+    Py_ssize_t iparam = 0;
+    for (Py_ssize_t iarg = 0; iarg < len; iarg++) {
+        PyObject *t = PyTuple_GET_ITEM(args, iarg);
+        if (is_typevar(t)) {
+            if (tuple_index(parameters, iparam, t) < 0) {
+                Py_INCREF(t);
+                PyTuple_SET_ITEM(parameters, iparam, t);
+                iparam++;
+            }
+        }
+    }
+    if (iparam < len) {
+        if (_PyTuple_Resize(&parameters, iparam) < 0) {
+            Py_XDECREF(parameters);
+            return NULL;
+        }
+    }
+    return parameters;
+}
+
 static PyObject *
 ga_getitem(PyObject *self, PyObject *item)
 {
@@ -1999,7 +2027,7 @@ static const char* const attr_exceptions[] = {
     "__args__",
     "__parameters__",
     "__mro_entries__",
-    "__reduce_ex__",
+    "__reduce_ex__",  // needed so we don't look up object.__reduce_ex__
     "__reduce__",
     "__setstate__",
     NULL,
@@ -2084,22 +2112,15 @@ static PyObject *
 ga_reduce(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     gaobject *alias = (gaobject *)self;
-    return Py_BuildValue("O(OO)(O)", Py_TYPE(alias),
-                         alias->origin, alias->args, alias->parameters);
+    return Py_BuildValue("O(OO)", Py_TYPE(alias),
+                         alias->origin, alias->args);
 }
 
 static PyObject *
 ga_setstate(PyObject *self, PyObject *state)
 {
     gaobject *alias = (gaobject *)self;
-    PyObject *parameters = NULL;
-    if (!PyTuple_Check(state)) {
-        PyErr_SetString(PyExc_TypeError, "state is not a tuple");
-        return NULL;
-    }
-    if (!PyArg_ParseTuple(state, "O", &parameters)) {
-        return NULL;
-    }
+    PyObject *parameters = make_parameters(alias->args);
     Py_INCREF(parameters);
     alias->parameters = parameters;
     Py_RETURN_NONE;
@@ -2158,34 +2179,6 @@ PyTypeObject Py_GenericAliasType = {
     .tp_new = ga_new,
     .tp_free = PyObject_GC_Del,
 };
-
-// tuple(t for t in args if isinstance(t, TypeVar))
-static PyObject *
-make_parameters(PyObject *args)
-{
-    Py_ssize_t len = PyTuple_GET_SIZE(args);
-    PyObject *parameters = PyTuple_New(len);
-    if (parameters == NULL)
-        return NULL;
-    Py_ssize_t iparam = 0;
-    for (Py_ssize_t iarg = 0; iarg < len; iarg++) {
-        PyObject *t = PyTuple_GET_ITEM(args, iarg);
-        if (is_typevar(t)) {
-            if (tuple_index(parameters, iparam, t) < 0) {
-                Py_INCREF(t);
-                PyTuple_SET_ITEM(parameters, iparam, t);
-                iparam++;
-            }
-        }
-    }
-    if (iparam < len) {
-        if (_PyTuple_Resize(&parameters, iparam) < 0) {
-            Py_XDECREF(parameters);
-            return NULL;
-        }
-    }
-    return parameters;
-}
 
 PyObject *
 Py_GenericAlias(PyObject *origin, PyObject *args)
