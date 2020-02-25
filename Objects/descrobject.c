@@ -1963,14 +1963,13 @@ make_parameters(PyObject *args)
     return parameters;
 }
 
-_Py_IDENTIFIER(__parameters__);
-
 static PyObject *
 ga_getitem(PyObject *self, PyObject *item)
 {
     gaobject *alias = (gaobject *)self;
     // do a lookup for __parameters__ so it gets populated (if not already)
     if (alias->parameters == NULL) {
+        _Py_IDENTIFIER(__parameters__);
         PyObject *params = _PyObject_GetAttrId(self, &PyId___parameters__);
         if (params == NULL) {
             return NULL;
