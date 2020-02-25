@@ -4080,7 +4080,7 @@ class TestPEP519(unittest.TestCase):
         self.assertTrue(issubclass(FakePath, os.PathLike))
 
     def test_pathlike_class_getitem(self):
-        self.assertIs(os.PathLike[bytes], os.PathLike)
+        self.assertIsInstance(os.PathLike[bytes], os.PathLike)
 
 
 class TimesTests(unittest.TestCase):
