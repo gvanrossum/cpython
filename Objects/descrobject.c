@@ -2096,7 +2096,7 @@ static PyObject *
 ga_instancecheck(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return PyErr_Format(PyExc_TypeError,
-                        "isinstance() argument 2 cannot be a parametrized generic",
+                        "isinstance() argument 2 cannot be a parameterized generic",
                         self);
 }
 
@@ -2104,7 +2104,7 @@ static PyObject *
 ga_subclasscheck(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return PyErr_Format(PyExc_TypeError,
-                        "issubclass() argument 2 cannot be a parametrized generic",
+                        "issubclass() argument 2 cannot be a parameterized generic",
                         self);
 }
 
