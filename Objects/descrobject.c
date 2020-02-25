@@ -1967,6 +1967,11 @@ static PyObject *
 ga_getitem(PyObject *self, PyObject *item)
 {
     gaobject *alias = (gaobject *)self;
+    // do a lookup for __parameters__ so it gets populated
+    PyObject *params = PyObject_GetAttrString(self, "__parameters__");
+    if (params == NULL) {
+        return NULL;
+    }
     Py_ssize_t nparams = PyTuple_GET_SIZE(alias->parameters);
     if (nparams == 0) {
         return PyErr_Format(PyExc_TypeError,
@@ -2138,7 +2143,26 @@ static PyMethodDef ga_methods[] = {
 static PyMemberDef ga_members[] = {
     {"__origin__", T_OBJECT, offsetof(gaobject, origin), READONLY},
     {"__args__", T_OBJECT, offsetof(gaobject, args), READONLY},
-    {"__parameters__", T_OBJECT, offsetof(gaobject, parameters), READONLY},
+    {0}
+};
+
+static PyObject *
+ga_parameters(PyObject *self, void *unused)
+{
+    gaobject *alias = (gaobject *)self;
+    if (alias->parameters == NULL) {
+        alias->parameters = make_parameters(alias->args);
+        if (alias->parameters == NULL) {
+            Py_DECREF(alias->parameters);
+            return NULL;
+        }
+    }
+    Py_INCREF(alias->parameters);
+    return alias->parameters;
+}
+
+static PyGetSetDef ga_properties[] = {
+    {"__parameters__", ga_parameters, (setter)NULL, "Type variables in the GenericAlias.", NULL},
     {0}
 };
 
@@ -2177,6 +2201,7 @@ PyTypeObject Py_GenericAliasType = {
     .tp_alloc = PyType_GenericAlloc,
     .tp_new = ga_new,
     .tp_free = PyObject_GC_Del,
+    .tp_getset = ga_properties,
 };
 
 PyObject *
@@ -2201,12 +2226,7 @@ Py_GenericAlias(PyObject *origin, PyObject *args)
     Py_INCREF(origin);
     alias->origin = origin;
     alias->args = args;
-    // TODO: Make __parameters__ a lazy attribute
-    alias->parameters = make_parameters(args);
-    if (alias->parameters == NULL) {
-        Py_DECREF(alias);
-        return NULL;
-    }
+    alias->parameters = NULL;
     _PyObject_GC_TRACK(alias);
     return (PyObject *)alias;
 }
