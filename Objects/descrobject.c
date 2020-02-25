@@ -1963,14 +1963,19 @@ make_parameters(PyObject *args)
     return parameters;
 }
 
+_Py_IDENTIFIER(__parameters__);
+
 static PyObject *
 ga_getitem(PyObject *self, PyObject *item)
 {
     gaobject *alias = (gaobject *)self;
-    // do a lookup for __parameters__ so it gets populated
-    PyObject *params = PyObject_GetAttrString(self, "__parameters__");
-    if (params == NULL) {
-        return NULL;
+    // do a lookup for __parameters__ so it gets populated (if not already)
+    if (alias->parameters == NULL) {
+        PyObject *params = _PyObject_GetAttrId(self, &PyId___parameters__);
+        if (params == NULL) {
+            return NULL;
+        }
+        Py_DECREF(params);
     }
     Py_ssize_t nparams = PyTuple_GET_SIZE(alias->parameters);
     if (nparams == 0) {
@@ -2034,7 +2039,6 @@ static const char* const attr_exceptions[] = {
     "__mro_entries__",
     "__reduce_ex__",  // needed so we don't look up object.__reduce_ex__
     "__reduce__",
-    "__setstate__",
     NULL,
 };
 
@@ -2121,22 +2125,11 @@ ga_reduce(PyObject *self, PyObject *Py_UNUSED(ignored))
                          alias->origin, alias->args);
 }
 
-static PyObject *
-ga_setstate(PyObject *self, PyObject *state)
-{
-    gaobject *alias = (gaobject *)self;
-    PyObject *parameters = make_parameters(alias->args);
-    Py_INCREF(parameters);
-    alias->parameters = parameters;
-    Py_RETURN_NONE;
-}
-
 static PyMethodDef ga_methods[] = {
     {"__mro_entries__", ga_mro_entries, METH_O},
     {"__instancecheck__", ga_instancecheck, METH_O},
     {"__subclasscheck__", ga_subclasscheck, METH_O},
     {"__reduce__", ga_reduce, METH_NOARGS},
-    {"__setstate__", ga_setstate, METH_O},
     {0}
 };
 
