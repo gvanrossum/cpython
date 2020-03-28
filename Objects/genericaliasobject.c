@@ -398,6 +398,8 @@ ga_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 PyTypeObject Py_GenericAliasType = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     .tp_name = "types.GenericAlias",
+    .tp_doc = "A type to represent the type 'origin' as generic with respect to the type "
+              "arguments 'args'. See PEP 585 for more.",
     .tp_basicsize = sizeof(gaobject),
     .tp_dealloc = ga_dealloc,
     .tp_repr = ga_repr,
