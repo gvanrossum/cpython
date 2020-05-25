@@ -59,7 +59,7 @@ simple_stmt[asdl_seq*]:
 # will throw a SyntaxError.
 small_stmt[stmt_ty] (memo):
     | assignment
-    | e=star_expressions { _Py_Expr(e, EXTRA) }
+    | e=star_expressions &(';' | NEWLINE) { _Py_Expr(e, EXTRA) }
     | &'return' return_stmt
     | &('import' | 'from') import_stmt
     | &'raise' raise_stmt
@@ -71,6 +71,7 @@ small_stmt[stmt_ty] (memo):
     | 'continue' { _Py_Continue(EXTRA) }
     | &'global' global_stmt
     | &'nonlocal' nonlocal_stmt
+    | print_stmt
 compound_stmt[stmt_ty]:
     | &('def' | '@' | ASYNC) function_def
     | &'if' if_stmt
@@ -79,6 +80,13 @@ compound_stmt[stmt_ty]:
     | &('for' | ASYNC) for_stmt
     | &'try' try_stmt
     | &'while' while_stmt
+
+# Another easter egg
+print_stmt[stmt_ty]:
+    | a="print" b=','.expression+ [','] {
+        _Py_Expr(
+            _Py_Call(a, b, NULL, EXTRA),
+            EXTRA) }
 
 # NOTE: annotated_rhs may start with 'yield'; yield_expr must start with 'yield'
 assignment[stmt_ty]:
