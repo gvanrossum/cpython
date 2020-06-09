@@ -90,6 +90,13 @@ call_stmt[stmt_ty]:
                     EXTRA), EXTRA) }
 simple_primary[expr_ty]:
     | a=simple_primary '.' b=NAME { _Py_Attribute(a, b->v.Name.id, Load, EXTRA) }
+    | a=simple_primary b=genexp &('.'|'('|'[') { _Py_Call(a, CHECK(_PyPegen_singleton_seq(p, b)), NULL, EXTRA) }
+    | a=simple_primary '(' b=[arguments] ')' &('.'|'('|'[') {
+        _Py_Call(a,
+                 (b) ? ((expr_ty) b)->v.Call.args : NULL,
+                 (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
+                 EXTRA) }
+    | a=simple_primary '[' b=slices ']' &('.'|'('|'[') { _Py_Subscript(a, b, Load, EXTRA) }
     | NAME
 
 # NOTE: annotated_rhs may start with 'yield'; yield_expr must start with 'yield'
