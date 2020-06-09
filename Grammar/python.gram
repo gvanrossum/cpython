@@ -83,11 +83,14 @@ compound_stmt[stmt_ty]:
 
 # Another easter egg -- try 'print 2+2'
 call_stmt[stmt_ty]:
-    | a=NAME &(NAME | NUMBER | STRING) b=args {
+    | a=simple_primary &(NAME | NUMBER | STRING) b=args {
         _Py_Expr(_Py_Call(a,
                     (b) ? ((expr_ty) b)->v.Call.args : NULL,
                     (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
                     EXTRA), EXTRA) }
+simple_primary[expr_ty]:
+    | a=simple_primary '.' b=NAME { _Py_Attribute(a, b->v.Name.id, Load, EXTRA) }
+    | NAME
 
 # NOTE: annotated_rhs may start with 'yield'; yield_expr must start with 'yield'
 assignment[stmt_ty]:
