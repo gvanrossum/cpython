@@ -83,10 +83,11 @@ compound_stmt[stmt_ty]:
 
 # Another easter egg
 print_stmt[stmt_ty]:
-    | a="print" b=','.expression+ [','] {
-        _Py_Expr(
-            _Py_Call(a, b, NULL, EXTRA),
-            EXTRA) }
+    | a="print" b=args {
+        _Py_Expr(_Py_Call(a,
+                    (b) ? ((expr_ty) b)->v.Call.args : NULL,
+                    (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
+                    EXTRA), EXTRA) }
 
 # NOTE: annotated_rhs may start with 'yield'; yield_expr must start with 'yield'
 assignment[stmt_ty]:
