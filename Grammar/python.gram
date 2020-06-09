@@ -71,7 +71,7 @@ small_stmt[stmt_ty] (memo):
     | 'continue' { _Py_Continue(EXTRA) }
     | &'global' global_stmt
     | &'nonlocal' nonlocal_stmt
-    | print_stmt
+    | call_stmt
 compound_stmt[stmt_ty]:
     | &('def' | '@' | ASYNC) function_def
     | &'if' if_stmt
@@ -81,9 +81,9 @@ compound_stmt[stmt_ty]:
     | &'try' try_stmt
     | &'while' while_stmt
 
-# Another easter egg
-print_stmt[stmt_ty]:
-    | a="print" b=args {
+# Another easter egg -- try 'print 2+2'
+call_stmt[stmt_ty]:
+    | a=NAME &(NAME | NUMBER | STRING) b=args {
         _Py_Expr(_Py_Call(a,
                     (b) ? ((expr_ty) b)->v.Call.args : NULL,
                     (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
