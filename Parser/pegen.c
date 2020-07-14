@@ -1890,67 +1890,66 @@ _PyPegen_qcall(expr_ty func, expr_ty arguments,
         return RAISE_SYNTAX_ERROR("cannot yet handle qcall with kwargs");
     }
     asdl_seq *args = arguments->v.Call.args;
-    if (asdl_seq_LEN(args) != 1) {
-        return RAISE_SYNTAX_ERROR("cannot yet handle qcall with 0 or 2+ args");
+    asdl_seq *newargs = _Py_asdl_seq_new(asdl_seq_LEN(args), p->arena);
+    if (!newargs) {
+        return NULL;
     }
-    expr_ty arg = (expr_ty)asdl_seq_GET(args, 0);
-    if (arg->kind == Starred_kind) {
-        return RAISE_SYNTAX_ERROR("cannot yet compile QCall with *args");
-    }
+    for (int i = 0; i < asdl_seq_LEN(args); i++) {
+        expr_ty arg = (expr_ty)asdl_seq_GET(args, i);
+        if (arg->kind == Starred_kind) {
+            return RAISE_SYNTAX_ERROR("cannot yet compile QCall with *args");
+        }
 
-    // Unparse it into a string constant.
-    PyObject *unparsed_str = _PyAST_ExprAsUnicode(arg);
-    if (!unparsed_str) {
-        return NULL;
-    }
-    if (PyArena_AddPyObject(p->arena, unparsed_str) < 0) {
-        return NULL;
-    }
-    expr_ty unparsed = Constant(unparsed_str, NULL,
+        // Unparse it into a string constant.
+        PyObject *unparsed_str = _PyAST_ExprAsUnicode(arg);
+        if (!unparsed_str) {
+            return NULL;
+        }
+        if (PyArena_AddPyObject(p->arena, unparsed_str) < 0) {
+            return NULL;
+        }
+        expr_ty unparsed = Constant(unparsed_str, NULL,
+                                    arg->lineno, arg->col_offset,
+                                    arg->end_lineno, arg->end_col_offset,
+                                    p->arena);
+        if (!unparsed) {
+            return NULL;
+        }
+
+        // Synthesize a lambda.
+        arguments_ty lambda_args = _PyPegen_empty_arguments(p);
+        if (!lambda_args) {
+            return NULL;
+        }
+        expr_ty lambda = Lambda(lambda_args, arg,
                                 arg->lineno, arg->col_offset,
                                 arg->end_lineno, arg->end_col_offset,
                                 p->arena);
-    if (!unparsed) {
-        return NULL;
-    }
+        if (!lambda) {
+            return NULL;
+        }
 
-    // Synthesize a lambda.
-    arguments_ty lambda_args = _PyPegen_empty_arguments(p);
-    if (!lambda_args) {
-        return NULL;
-    }
-    expr_ty lambda = Lambda(lambda_args, arg,
-                            arg->lineno, arg->col_offset,
-                            arg->end_lineno, arg->end_col_offset,
-                            p->arena);
-    if (!lambda) {
-        return NULL;
-    }
+        // Combine the string and the lambda into a tuple.
+        asdl_seq *pair = _Py_asdl_seq_new(2, p->arena);
+        if (!pair) {
+            return NULL;
+        }
+        asdl_seq_SET(pair, 0, unparsed);
+        asdl_seq_SET(pair, 1, lambda);
+        expr_ty tuple = Tuple(pair, Load,
+                              arg->lineno, arg->col_offset,
+                              arg->end_lineno, arg->end_col_offset,
+                              p->arena);
+        if (!tuple) {
+            return NULL;
+        }
 
-    // Combine the string and the lambda into a tuple.
-    asdl_seq *pair = _Py_asdl_seq_new(2, p->arena);
-    if (!pair) {
-        return NULL;
+        // Append to new argument list.
+        asdl_seq_SET(newargs, i, tuple);
     }
-    asdl_seq_SET(pair, 0, unparsed);
-    asdl_seq_SET(pair, 1, lambda);
-    expr_ty tuple = Tuple(pair, Load,
-                          arg->lineno, arg->col_offset,
-                          arg->end_lineno, arg->end_col_offset,
-                          p->arena);
-    if (!tuple) {
-        return NULL;
-    }
-
-    // Construct the argument list.
-    asdl_seq *posargs = _Py_asdl_seq_new(1, p->arena);
-    if (!posargs) {
-        return NULL;
-    }
-    asdl_seq_SET(posargs, 0, tuple);
 
     // Return a new Call object.
-    return Call(func, posargs, NULL,
+    return Call(func, newargs, NULL,
                 lineno, col_offset, end_lineno, end_col_offset,
                 p->arena);
 }
