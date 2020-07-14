@@ -152,6 +152,7 @@ RAISE_ERROR_KNOWN_LOCATION(Parser *p, PyObject *errtype, int lineno,
 #define UNUSED(expr) do { (void)(expr); } while (0)
 #define EXTRA_EXPR(head, tail) head->lineno, head->col_offset, tail->end_lineno, tail->end_col_offset, p->arena
 #define EXTRA _start_lineno, _start_col_offset, _end_lineno, _end_col_offset, p->arena
+#define EXTRA_p _start_lineno, _start_col_offset, _end_lineno, _end_col_offset, p
 #define RAISE_SYNTAX_ERROR(msg, ...) _PyPegen_raise_error(p, PyExc_SyntaxError, msg, ##__VA_ARGS__)
 #define RAISE_INDENTATION_ERROR(msg, ...) _PyPegen_raise_error(p, PyExc_IndentationError, msg, ##__VA_ARGS__)
 #define RAISE_SYNTAX_ERROR_KNOWN_LOCATION(a, msg, ...) \
@@ -251,6 +252,7 @@ StarEtc *_PyPegen_star_etc(Parser *, arg_ty, asdl_seq *, arg_ty);
 arguments_ty _PyPegen_make_arguments(Parser *, asdl_seq *, SlashWithDefault *,
                             asdl_seq *, asdl_seq *, StarEtc *);
 arguments_ty _PyPegen_empty_arguments(Parser *);
+expr_ty _PyPegen_qcall(expr_ty, expr_ty, int, int, int, int, Parser *);
 AugOperator *_PyPegen_augoperator(Parser*, operator_ty type);
 stmt_ty _PyPegen_function_def_decorators(Parser *, asdl_seq *, stmt_ty);
 stmt_ty _PyPegen_class_def_decorators(Parser *, asdl_seq *, stmt_ty);

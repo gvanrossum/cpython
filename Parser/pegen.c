@@ -4,6 +4,7 @@
 
 #include "pegen.h"
 #include "string_parser.h"
+#include "ast.h"
 
 PyObject *
 _PyPegen_new_type_comment(Parser *p, char *s)
@@ -1852,6 +1853,7 @@ _PyPegen_make_arguments(Parser *p, asdl_seq *slash_without_default,
 arguments_ty
 _PyPegen_empty_arguments(Parser *p)
 {
+    // Why not create a single empty sequence and reuse that 5x?
     asdl_seq *posonlyargs = _Py_asdl_seq_new(0, p->arena);
     if (!posonlyargs) {
         return NULL;
@@ -1875,6 +1877,82 @@ _PyPegen_empty_arguments(Parser *p)
 
     return _Py_arguments(posonlyargs, posargs, NULL, kwonlyargs, kwdefaults, NULL, kwdefaults,
                          p->arena);
+}
+
+/* Helper for qcall -- replace each arg with (unparse(arg), lambda: arg) */
+expr_ty
+_PyPegen_qcall(expr_ty func, expr_ty arguments,
+               int lineno, int col_offset, int end_lineno, int end_col_offset,
+               Parser *p)
+{
+    asdl_seq *keywords = arguments->v.Call.keywords;
+    if (asdl_seq_LEN(keywords)) {
+        return RAISE_SYNTAX_ERROR("cannot yet handle qcall with kwargs");
+    }
+    asdl_seq *args = arguments->v.Call.args;
+    if (asdl_seq_LEN(args) != 1) {
+        return RAISE_SYNTAX_ERROR("cannot yet handle qcall with 0 or 2+ args");
+    }
+    expr_ty arg = (expr_ty)asdl_seq_GET(args, 0);
+    if (arg->kind == Starred_kind) {
+        return RAISE_SYNTAX_ERROR("cannot yet compile QCall with *args");
+    }
+
+    // Unparse it into a string constant.
+    PyObject *unparsed_str = _PyAST_ExprAsUnicode(arg);
+    if (!unparsed_str) {
+        return NULL;
+    }
+    if (PyArena_AddPyObject(p->arena, unparsed_str) < 0) {
+        return NULL;
+    }
+    expr_ty unparsed = Constant(unparsed_str, NULL,
+                                arg->lineno, arg->col_offset,
+                                arg->end_lineno, arg->end_col_offset,
+                                p->arena);
+    if (!unparsed) {
+        return NULL;
+    }
+
+    // Synthesize a lambda.
+    arguments_ty lambda_args = _PyPegen_empty_arguments(p);
+    if (!lambda_args) {
+        return NULL;
+    }
+    expr_ty lambda = Lambda(lambda_args, arg,
+                            arg->lineno, arg->col_offset,
+                            arg->end_lineno, arg->end_col_offset,
+                            p->arena);
+    if (!lambda) {
+        return NULL;
+    }
+
+    // Combine the string and the lambda into a tuple.
+    asdl_seq *pair = _Py_asdl_seq_new(2, p->arena);
+    if (!pair) {
+        return NULL;
+    }
+    asdl_seq_SET(pair, 0, unparsed);
+    asdl_seq_SET(pair, 1, lambda);
+    expr_ty tuple = Tuple(pair, Load,
+                          arg->lineno, arg->col_offset,
+                          arg->end_lineno, arg->end_col_offset,
+                          p->arena);
+    if (!tuple) {
+        return NULL;
+    }
+
+    // Construct the argument list.
+    asdl_seq *posargs = _Py_asdl_seq_new(1, p->arena);
+    if (!posargs) {
+        return NULL;
+    }
+    asdl_seq_SET(posargs, 0, tuple);
+
+    // Return a new Call object.
+    return Call(func, posargs, NULL,
+                lineno, col_offset, end_lineno, end_col_offset,
+                p->arena);
 }
 
 /* Encapsulates the value of an operator_ty into an AugOperator struct */

@@ -467,6 +467,7 @@ primary[expr_ty]:
                  (b) ? ((expr_ty) b)->v.Call.args : NULL,
                  (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
                  EXTRA) }
+    | a=primary '{' b=[arguments] '}' {_PyPegen_qcall(a, b, EXTRA_p) }
     | a=primary '[' b=slices ']' { _Py_Subscript(a, b, Load, EXTRA) }
     | atom
 
@@ -532,7 +533,7 @@ yield_expr[expr_ty]:
     | 'yield' a=[star_expressions] { _Py_Yield(a, EXTRA) }
 
 arguments[expr_ty] (memo):
-    | a=args [','] &')' { a }
+    | a=args [','] &(')'|'}') { a }
     | incorrect_arguments
 args[expr_ty]:
     | a=starred_expression b=[',' c=args { c }] {
