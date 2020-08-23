@@ -177,6 +177,7 @@ PyTypeObject _PyManagedBuffer_Type = {
 };
 
 
+
 /****************************************************************************/
 /*                             MemoryView Object                            */
 /****************************************************************************/
@@ -3160,6 +3161,48 @@ static PyMethodDef memory_methods[] = {
     {NULL,          NULL}
 };
 
+/////////////////////////////////////////////////////////////////////////////
+
+static PyObject *memory_iter(PyObject *seq);
+
+typedef struct {
+    PyObject_HEAD
+    Py_ssize_t it_index;
+    PyMemoryViewObject *it_seq; // Set to NULL when iterator is exhausted
+} memoryiterobject;
+
+
+static PyTypeObject PyMemoryIter_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    .tp_name = "memory_iterator",
+    .tp_basicsize = sizeof(memoryiterobject),
+    // methods
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_iter = PyObject_SelfIter,
+};
+
+
+static PyObject *
+memory_iter(PyObject *seq)
+{
+    memoryiterobject *it;
+
+    if (!PyMemoryView_Check(seq)) {
+        PyErr_BadInternalCall();
+        return NULL;
+    }
+    it = PyObject_GC_New(memoryiterobject, &PyMemoryIter_Type);
+    if (it == NULL)
+        return NULL;
+    it->it_index = 0;
+    Py_INCREF(seq);
+    it->it_seq = (PyMemoryViewObject *)seq;
+    _PyObject_GC_TRACK(it);
+    return (PyObject *)it;
+}
+
+
 
 PyTypeObject PyMemoryView_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -3187,7 +3230,7 @@ PyTypeObject PyMemoryView_Type = {
     (inquiry)memory_clear,                    /* tp_clear */
     memory_richcompare,                       /* tp_richcompare */
     offsetof(PyMemoryViewObject, weakreflist),/* tp_weaklistoffset */
-    0,                                        /* tp_iter */
+    memory_iter,                              /* tp_iter */
     0,                                        /* tp_iternext */
     memory_methods,                           /* tp_methods */
     0,                                        /* tp_members */
