@@ -3161,9 +3161,9 @@ static PyMethodDef memory_methods[] = {
     {NULL,          NULL}
 };
 
-/////////////////////////////////////////////////////////////////////////////
-
-static PyObject *memory_iter(PyObject *seq);
+/**************************************************************************/
+/*                          Memoryview Iterator                           */
+/**************************************************************************/
 
 typedef struct {
     PyObject_HEAD
@@ -3172,16 +3172,64 @@ typedef struct {
 } memoryiterobject;
 
 
+static void memoryiter_dealloc(memoryiterobject *);
+static int memoryiter_traverse(memoryiterobject * , visitproc, void *);
+static PyObject * memoryiter_next(memoryiterobject *);
+static PyObject *memory_iter(PyObject *);
+
+
 static PyTypeObject PyMemoryIter_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     .tp_name = "memory_iterator",
     .tp_basicsize = sizeof(memoryiterobject),
     // methods
+    .tp_dealloc = (destructor)memoryiter_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)memoryiter_traverse,
     .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc)memoryiter_next,
 };
 
+
+static void
+memoryiter_dealloc(memoryiterobject *it)
+{
+  _PyObject_GC_UNTRACK(it);
+  Py_XDECREF(it->it_seq);
+  PyObject_GC_Del(it);
+}
+
+static int
+memoryiter_traverse(memoryiterobject *it, visitproc visit, void *arg)
+{
+  Py_VISIT(it->it_seq);
+  return 0;
+}
+
+static PyObject *
+memoryiter_next(memoryiterobject *it)
+{
+  PyMemoryViewObject *seq;
+
+  assert(it != NULL);
+  seq = it->it_seq;
+  if (seq == NULL)
+      return NULL;
+  assert (PyMemoryView_Check(seq));
+
+  if (it->it_index < PyMemoryView_GET_SIZE(seq)){
+      PyObject * item = PyLong_FromSsize_t(seq->view.itemsize);
+      if (item != NULL)
+        ++it->it_index;
+      return item;
+  }
+
+  it->it_seq = NULL;
+  Py_DECREF(seq);
+  return NULL;
+
+}
 
 static PyObject *
 memory_iter(PyObject *seq)
@@ -3201,8 +3249,6 @@ memory_iter(PyObject *seq)
     _PyObject_GC_TRACK(it);
     return (PyObject *)it;
 }
-
-
 
 PyTypeObject PyMemoryView_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
