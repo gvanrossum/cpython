@@ -12,6 +12,7 @@ PyAPI_DATA(PyTypeObject) _PyManagedBuffer_Type;
 PyAPI_DATA(PyTypeObject) PyMemoryView_Type;
 
 #define PyMemoryView_Check(op) Py_IS_TYPE(op, &PyMemoryView_Type)
+#define PyMemoryView_GET_SIZE(op)  (assert(PyMemoryView_Check(op)),Py_SIZE(op))
 
 #ifndef Py_LIMITED_API
 /* Get a pointer to the memoryview's private copy of the exporter's buffer. */
