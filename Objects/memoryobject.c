@@ -3209,24 +3209,22 @@ memoryiter_traverse(memoryiterobject *it, visitproc visit, void *arg)
 static PyObject *
 memoryiter_next(memoryiterobject *it)
 {
-  PyMemoryViewObject *seq;
+    PyMemoryViewObject *seq;
 
-  assert(it != NULL);
-  seq = it->it_seq;
-  if (seq == NULL)
+    assert(it != NULL);
+    seq = it->it_seq;
+    if (seq == NULL)
       return NULL;
-  assert (PyMemoryView_Check(seq));
+    assert (PyMemoryView_Check(seq));
 
-  if (it->it_index < PyMemoryView_GET_SIZE(seq)){
-      PyObject * item = PyLong_FromSsize_t(seq->view.itemsize);
-      if (item != NULL)
-        ++it->it_index;
-      return item;
-  }
+    if (it->it_index < PyMemoryView_GET_SIZE(seq)){
+        return PyObject_GetItem(
+                (PyObject * )seq, PyLong_FromSize_t(it->it_index++));
+    }
 
-  it->it_seq = NULL;
-  Py_DECREF(seq);
-  return NULL;
+    it->it_seq = NULL;
+    Py_DECREF(seq);
+    return NULL;
 
 }
 
