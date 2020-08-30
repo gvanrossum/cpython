@@ -3217,15 +3217,13 @@ memoryiter_next(memoryiterobject *it)
       return NULL;
     assert (PyMemoryView_Check(seq));
 
-    if (it->it_index < PyMemoryView_GET_SIZE(seq)){
-        return PyObject_GetItem(
-                (PyObject * )seq, PyLong_FromSize_t(it->it_index++));
+    if (it->it_index < memory_length(seq)){
+        return memory_item(seq, it->it_index++);
     }
 
     it->it_seq = NULL;
     Py_DECREF(seq);
     return NULL;
-
 }
 
 static PyObject *
