@@ -3190,7 +3190,6 @@ static PyTypeObject PyMemoryIter_Type = {
     .tp_iternext = (iternextfunc)memoryiter_next,
 };
 
-
 static void
 memoryiter_dealloc(memoryiterobject *it)
 {
