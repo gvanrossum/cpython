@@ -31,6 +31,7 @@ haslocal = []
 hascompare = []
 hasfree = []
 hasnargs = [] # unused
+shadowop = set()
 
 opmap = {}
 opname = ['<%r>' % (op,) for op in range(256)]
@@ -50,6 +51,10 @@ def jrel_op(name, op):
 def jabs_op(name, op):
     def_op(name, op)
     hasjabs.append(op)
+
+def shadow_op(name, op):
+    def_op(name, op)
+    shadowop.add(op)
 
 # Instruction opcodes for compiled code
 # Blank lines correspond to available opcodes
@@ -213,5 +218,45 @@ def_op('LIST_EXTEND', 162)
 def_op('SET_UPDATE', 163)
 def_op('DICT_MERGE', 164)
 def_op('DICT_UPDATE', 165)
+
+# facebook begin - shadow byte codes
+shadow_op('BINARY_SUBSCR_TUPLE_CONST_INT', 225)
+shadow_op('BINARY_SUBSCR_DICT_STR', 226)
+shadow_op('BINARY_SUBSCR_LIST', 227)
+shadow_op('BINARY_SUBSCR_TUPLE', 228)
+shadow_op('BINARY_SUBSCR_DICT', 229)
+
+shadow_op('LOAD_METHOD_UNCACHABLE', 230)
+shadow_op('LOAD_METHOD_MODULE', 231)
+shadow_op('LOAD_METHOD_TYPE', 232)
+shadow_op('LOAD_METHOD_SPLIT_DICT_DESCR', 233)
+shadow_op('LOAD_METHOD_SPLIT_DICT_METHOD', 234)
+shadow_op('LOAD_METHOD_DICT_DESCR', 235)
+shadow_op('LOAD_METHOD_DICT_METHOD', 236)
+shadow_op('LOAD_METHOD_NO_DICT_METHOD', 237)
+shadow_op('LOAD_METHOD_NO_DICT_DESCR', 238)
+
+shadow_op('STORE_ATTR_SLOT', 239)
+shadow_op('STORE_ATTR_SPLIT_DICT', 240)
+shadow_op('STORE_ATTR_DESCR', 241)
+shadow_op('STORE_ATTR_UNCACHABLE', 242)
+shadow_op('STORE_ATTR_DICT', 243)
+
+shadow_op('LOAD_ATTR_POLYMORPHIC', 244)
+shadow_op('LOAD_ATTR_SLOT', 245)
+shadow_op('LOAD_ATTR_MODULE', 246)
+shadow_op('LOAD_ATTR_TYPE', 247)
+shadow_op('LOAD_ATTR_SPLIT_DICT_DESCR', 248)
+shadow_op('LOAD_ATTR_SPLIT_DICT', 249)
+shadow_op('LOAD_ATTR_DICT_NO_DESCR', 250)
+shadow_op('LOAD_ATTR_NO_DICT_DESCR', 251)
+shadow_op('LOAD_ATTR_DICT_DESCR', 252)
+shadow_op('LOAD_ATTR_UNCACHABLE', 253)
+
+shadow_op('LOAD_GLOBAL_CACHED', 254)
+shadow_op('SHADOW_NOP', 255)
+
+# facebook end - shadow byte codes
+
 
 del def_op, name_op, jrel_op, jabs_op

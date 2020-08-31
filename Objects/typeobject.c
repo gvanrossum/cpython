@@ -7,6 +7,7 @@
 #include "pycore_pyerrors.h"
 #include "pycore_pystate.h"       // _PyThreadState_GET()
 #include "pycore_unionobject.h"   // _Py_Union()
+#include "pycore_shadowcode.h"
 #include "frameobject.h"
 #include "structmember.h"         // PyMemberDef
 
@@ -305,6 +306,7 @@ PyType_Modified(PyTypeObject *type)
         }
     }
     type->tp_flags &= ~Py_TPFLAGS_VALID_VERSION_TAG;
+    _PyShadow_TypeModified(type);
 }
 
 static void

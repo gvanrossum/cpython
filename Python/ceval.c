@@ -20,6 +20,7 @@
 #include "pycore_pylifecycle.h"   // _PyErr_Print()
 #include "pycore_pymem.h"         // _PyMem_IsPtrFreed()
 #include "pycore_pystate.h"       // _PyInterpreterState_GET()
+#include "pycore_shadowcode.h"
 #include "pycore_sysmodule.h"     // _PySys_Audit()
 #include "pycore_tuple.h"         // _PyTuple_ITEMS()
 
@@ -255,6 +256,8 @@ _Py_FatalError_TstateNULL(const char *func)
                        "but the GIL is released "
                        "(the current Python thread state is NULL)");
 }
+
+int _PyEval_ShadowByteCodeEnabled = 1; /* facebook */
 
 #ifdef EXPERIMENTAL_ISOLATED_SUBINTERPRETERS
 int
@@ -981,7 +984,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     const _Py_CODEUNIT *first_instr;
     PyObject *names;
     PyObject *consts;
-    _PyOpcache *co_opcache;
+    _PyShadow_EvalState shadow = {};
 
 #ifdef LLTRACE
     _Py_IDENTIFIER(__ltrace__);
@@ -1087,6 +1090,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 #define DISPATCH() continue
 #endif
 
+#define PYSHADOW_INIT_THRESHOLD 50
 
 /* Tuple access macros */
 
@@ -1245,103 +1249,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         Py_XDECREF(traceback); \
     } while(0)
 
-    /* macros for opcode cache */
-#define OPCACHE_CHECK() \
-    do { \
-        co_opcache = NULL; \
-        if (co->co_opcache != NULL) { \
-            unsigned char co_opcache_offset = \
-                co->co_opcache_map[next_instr - first_instr]; \
-            if (co_opcache_offset > 0) { \
-                assert(co_opcache_offset <= co->co_opcache_size); \
-                co_opcache = &co->co_opcache[co_opcache_offset - 1]; \
-                assert(co_opcache != NULL); \
-            } \
-        } \
-    } while (0)
-
-#define OPCACHE_DEOPT() \
-    do { \
-        if (co_opcache != NULL) { \
-            co_opcache->optimized = -1; \
-            unsigned char co_opcache_offset = \
-                co->co_opcache_map[next_instr - first_instr]; \
-            assert(co_opcache_offset <= co->co_opcache_size); \
-            co->co_opcache_map[co_opcache_offset] = 0; \
-            co_opcache = NULL; \
-        } \
-    } while (0)
-
-#define OPCACHE_DEOPT_LOAD_ATTR() \
-    do { \
-        if (co_opcache != NULL) { \
-            OPCACHE_STAT_ATTR_DEOPT(); \
-            OPCACHE_DEOPT(); \
-        } \
-    } while (0)
-
-#define OPCACHE_MAYBE_DEOPT_LOAD_ATTR() \
-    do { \
-        if (co_opcache != NULL && --co_opcache->optimized <= 0) { \
-            OPCACHE_DEOPT_LOAD_ATTR(); \
-        } \
-    } while (0)
-
-#if OPCACHE_STATS
-
-#define OPCACHE_STAT_GLOBAL_HIT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_hits++; \
-    } while (0)
-
-#define OPCACHE_STAT_GLOBAL_MISS() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_misses++; \
-    } while (0)
-
-#define OPCACHE_STAT_GLOBAL_OPT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_opts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_HIT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_hits++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_MISS() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_misses++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_OPT() \
-    do { \
-        if (co->co_opcache!= NULL) opcache_attr_opts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_DEOPT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_deopts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_TOTAL() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_total++; \
-    } while (0)
-
-#else /* OPCACHE_STATS */
-
-#define OPCACHE_STAT_GLOBAL_HIT()
-#define OPCACHE_STAT_GLOBAL_MISS()
-#define OPCACHE_STAT_GLOBAL_OPT()
-
-#define OPCACHE_STAT_ATTR_HIT()
-#define OPCACHE_STAT_ATTR_MISS()
-#define OPCACHE_STAT_ATTR_OPT()
-#define OPCACHE_STAT_ATTR_DEOPT()
-#define OPCACHE_STAT_ATTR_TOTAL()
-
-#endif
 
 /* Start of code */
 
@@ -1351,6 +1258,8 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     }
 
     tstate->frame = f;
+    co = f->f_code;
+    co->co_cache.curcalls++;
 
     if (tstate->use_tracing) {
         if (tstate->c_tracefunc != NULL) {
@@ -1389,7 +1298,16 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     if (PyDTrace_FUNCTION_ENTRY_ENABLED())
         dtrace_function_entry(f);
 
-    co = f->f_code;
+    /* Initialize the inline cache after the code object is "hot enough" */
+    if (co->co_cache.shadow == NULL && _PyEval_ShadowByteCodeEnabled) {
+        if (++(co->co_cache.ncalls) > PYSHADOW_INIT_THRESHOLD) {
+            if (_PyShadow_InitCache(co) == -1) {
+                goto error;
+            }
+            INLINE_CACHE_CREATED(co->co_cache);
+        }
+    }
+
     names = co->co_names;
     consts = co->co_consts;
     fastlocals = f->f_localsplus;
@@ -1398,7 +1316,20 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     assert(PyBytes_GET_SIZE(co->co_code) <= INT_MAX);
     assert(PyBytes_GET_SIZE(co->co_code) % sizeof(_Py_CODEUNIT) == 0);
     assert(_Py_IS_ALIGNED(PyBytes_AS_STRING(co->co_code), sizeof(_Py_CODEUNIT)));
-    first_instr = (_Py_CODEUNIT *) PyBytes_AS_STRING(co->co_code);
+
+    /* facebook begin t39538061 */
+    shadow.code = co;
+    shadow.first_instr = &first_instr;
+    if (co->co_cache.shadow != NULL &&
+        PyDict_CheckExact(f->f_builtins) &&
+        PyDict_CheckExact(f->f_globals)) {
+        shadow.shadow = co->co_cache.shadow;
+        first_instr = &shadow.shadow->code[0];
+    } else {
+        first_instr = (_Py_CODEUNIT *)PyBytes_AS_STRING(co->co_code);
+    }
+    /* facebook end t39538061 */
+
     /*
        f->f_lasti refers to the index of the last instruction,
        unless it's -1 in which case next_instr should be first_instr.
@@ -1429,21 +1360,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
      */
     f->f_stackdepth = -1;
     f->f_state = FRAME_EXECUTING;
-
-    if (co->co_opcache_flag < OPCACHE_MIN_RUNS) {
-        co->co_opcache_flag++;
-        if (co->co_opcache_flag == OPCACHE_MIN_RUNS) {
-            if (_PyCode_InitOpcache(co) < 0) {
-                goto exit_eval_frame;
-            }
-#if OPCACHE_STATS
-            opcache_code_objects_extra_mem +=
-                PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT) +
-                sizeof(_PyOpcache) * co->co_opcache_size;
-            opcache_code_objects++;
-#endif
-        }
-    }
 
 #ifdef LLTRACE
     lltrace = _PyDict_GetItemId(f->f_globals, &PyId___ltrace__) != NULL;
@@ -1817,9 +1733,23 @@ main_loop:
         }
 
         case TARGET(BINARY_SUBSCR): {
+            PyObject *res;
             PyObject *sub = POP();
             PyObject *container = TOP();
-            PyObject *res = PyObject_GetItem(container, sub);
+#ifdef INLINE_CACHE_PROFILE
+            char type_names[81];
+            snprintf(type_names,
+                     sizeof(type_names),
+                     "%s[%s]",
+                     Py_TYPE(container)->tp_name,
+                     Py_TYPE(sub)->tp_name);
+            INLINE_CACHE_INCR("binary_subscr_types", type_names);
+
+#endif
+            res = shadow.shadow == NULL
+                      ? PyObject_GetItem(container, sub)
+                      : _PyShadow_BinarySubscrWithCache(
+                            &shadow, next_instr, container, sub, oparg);
             Py_DECREF(container);
             Py_DECREF(sub);
             SET_TOP(res);
@@ -2546,9 +2476,21 @@ main_loop:
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();
             PyObject *v = SECOND();
+#ifdef INLINE_CACHE_PROFILE
+            _PyShadow_LogLocation(&shadow, next_instr, "STORE_ATTR");
+            char type_name[81];
+            snprintf(type_name,
+                     sizeof(type_name),
+                     "STORE_ATTR_TYPE[%s]",
+                     Py_TYPE(owner)->tp_name);
+            _PyShadow_LogLocation(&shadow, next_instr, type_name);
+#endif
             int err;
             STACK_SHRINK(2);
-            err = PyObject_SetAttr(owner, name, v);
+            err = shadow.shadow == NULL
+                      ? PyObject_SetAttr(owner, name, v)
+                      : _PyShadow_StoreAttrWithCache(
+                            &shadow, next_instr, owner, name, v);
             Py_DECREF(v);
             Py_DECREF(owner);
             if (err != 0)
@@ -2659,27 +2601,8 @@ main_loop:
         case TARGET(LOAD_GLOBAL): {
             PyObject *name;
             PyObject *v;
-            if (PyDict_CheckExact(f->f_globals)
-                && PyDict_CheckExact(f->f_builtins))
-            {
-                OPCACHE_CHECK();
-                if (co_opcache != NULL && co_opcache->optimized > 0) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
-
-                    if (lg->globals_ver ==
-                            ((PyDictObject *)f->f_globals)->ma_version_tag
-                        && lg->builtins_ver ==
-                           ((PyDictObject *)f->f_builtins)->ma_version_tag)
-                    {
-                        PyObject *ptr = lg->ptr;
-                        OPCACHE_STAT_GLOBAL_HIT();
-                        assert(ptr != NULL);
-                        Py_INCREF(ptr);
-                        PUSH(ptr);
-                        DISPATCH();
-                    }
-                }
-
+            if (PyDict_CheckExact(f->f_globals) &&
+                PyDict_CheckExact(f->f_builtins)) {
                 name = GETITEM(names, oparg);
                 v = _PyDict_LoadGlobal((PyDictObject *)f->f_globals,
                                        (PyDictObject *)f->f_builtins,
@@ -2694,22 +2617,10 @@ main_loop:
                     goto error;
                 }
 
-                if (co_opcache != NULL) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
-
-                    if (co_opcache->optimized == 0) {
-                        /* Wasn't optimized before. */
-                        OPCACHE_STAT_GLOBAL_OPT();
-                    } else {
-                        OPCACHE_STAT_GLOBAL_MISS();
-                    }
-
-                    co_opcache->optimized = 1;
-                    lg->globals_ver =
-                        ((PyDictObject *)f->f_globals)->ma_version_tag;
-                    lg->builtins_ver =
-                        ((PyDictObject *)f->f_builtins)->ma_version_tag;
-                    lg->ptr = v; /* borrowed */
+                if (shadow.shadow != NULL) {
+                    uint64_t gv = ((PyDictObject *) f->f_globals)->ma_version_tag;
+                    uint64_t bv = ((PyDictObject *) f->f_builtins)->ma_version_tag;
+                    _PyShadow_InitGlobal(&shadow, next_instr, gv, bv, v, name);
                 }
 
                 Py_INCREF(v);
@@ -3108,133 +3019,11 @@ main_loop:
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();
 
-            PyTypeObject *type = Py_TYPE(owner);
-            PyObject *res;
-            PyObject **dictptr;
-            PyObject *dict;
-            _PyOpCodeOpt_LoadAttr *la;
+            PyObject *res = shadow.shadow == NULL
+                                ? PyObject_GetAttr(owner, name)
+                                : _PyShadow_LoadAttrWithCache(
+                                      &shadow, next_instr, owner, name);
 
-            OPCACHE_STAT_ATTR_TOTAL();
-
-            OPCACHE_CHECK();
-            if (co_opcache != NULL && PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
-            {
-                if (co_opcache->optimized > 0) {
-                    /* Fast path -- cache hit makes LOAD_ATTR ~30% faster */
-                    la = &co_opcache->u.la;
-                    if (la->type == type && la->tp_version_tag == type->tp_version_tag)
-                    {
-                        assert(type->tp_dict != NULL);
-                        assert(type->tp_dictoffset > 0);
-
-                        dictptr = (PyObject **) ((char *)owner + type->tp_dictoffset);
-                        dict = *dictptr;
-                        if (dict != NULL && PyDict_CheckExact(dict)) {
-                            Py_ssize_t hint = la->hint;
-                            Py_INCREF(dict);
-                            res = NULL;
-                            la->hint = _PyDict_GetItemHint((PyDictObject*)dict, name, hint, &res);
-
-                            if (res != NULL) {
-                                if (la->hint == hint && hint >= 0) {
-                                    /* Our hint has helped -- cache hit. */
-                                    OPCACHE_STAT_ATTR_HIT();
-                                } else {
-                                    /* The hint we provided didn't work.
-                                       Maybe next time? */
-                                    OPCACHE_MAYBE_DEOPT_LOAD_ATTR();
-                                }
-
-                                Py_INCREF(res);
-                                SET_TOP(res);
-                                Py_DECREF(owner);
-                                Py_DECREF(dict);
-                                DISPATCH();
-                            } else {
-                                // This attribute can be missing sometimes -- we
-                                // don't want to optimize this lookup.
-                                OPCACHE_DEOPT_LOAD_ATTR();
-                                Py_DECREF(dict);
-                            }
-                        } else {
-                            // There is no dict, or __dict__ doesn't satisfy PyDict_CheckExact
-                            OPCACHE_DEOPT_LOAD_ATTR();
-                        }
-                    } else {
-                        // The type of the object has either been updated,
-                        // or is different.  Maybe it will stabilize?
-                        OPCACHE_MAYBE_DEOPT_LOAD_ATTR();
-                    }
-
-                    OPCACHE_STAT_ATTR_MISS();
-                }
-
-                if (co_opcache != NULL && /* co_opcache can be NULL after a DEOPT() call. */
-                    type->tp_getattro == PyObject_GenericGetAttr)
-                {
-                    PyObject *descr;
-                    Py_ssize_t ret;
-
-                    if (type->tp_dictoffset > 0) {
-                        if (type->tp_dict == NULL) {
-                            if (PyType_Ready(type) < 0) {
-                                Py_DECREF(owner);
-                                SET_TOP(NULL);
-                                goto error;
-                            }
-                        }
-
-                        descr = _PyType_Lookup(type, name);
-                        if (descr == NULL ||
-                            descr->ob_type->tp_descr_get == NULL ||
-                            !PyDescr_IsData(descr))
-                        {
-                            dictptr = (PyObject **) ((char *)owner + type->tp_dictoffset);
-                            dict = *dictptr;
-
-                            if (dict != NULL && PyDict_CheckExact(dict)) {
-                                Py_INCREF(dict);
-                                res = NULL;
-                                ret = _PyDict_GetItemHint((PyDictObject*)dict, name, -1, &res);
-                                if (res != NULL) {
-                                    Py_INCREF(res);
-                                    Py_DECREF(dict);
-                                    Py_DECREF(owner);
-                                    SET_TOP(res);
-
-                                    if (co_opcache->optimized == 0) {
-                                        // First time we optimize this opcode. */
-                                        OPCACHE_STAT_ATTR_OPT();
-                                        co_opcache->optimized = OPCODE_CACHE_MAX_TRIES;
-                                    }
-
-                                    la = &co_opcache->u.la;
-                                    la->type = type;
-                                    la->tp_version_tag = type->tp_version_tag;
-                                    la->hint = ret;
-
-                                    DISPATCH();
-                                }
-                                Py_DECREF(dict);
-                            } else {
-                                // There is no dict, or __dict__ doesn't satisfy PyDict_CheckExact
-                                OPCACHE_DEOPT_LOAD_ATTR();
-                            }
-                        } else {
-                            // We failed to find an attribute without a data-like descriptor
-                            OPCACHE_DEOPT_LOAD_ATTR();
-                        }
-                    } else {
-                        // The object's class does not have a tp_dictoffset we can use
-                        OPCACHE_DEOPT_LOAD_ATTR();
-                    }
-                } else if (type->tp_getattro != PyObject_GenericGetAttr) {
-                    OPCACHE_DEOPT_LOAD_ATTR();
-                }
-            }
-
-            /* slow path */
-            res = PyObject_GetAttr(owner, name);
             Py_DECREF(owner);
             SET_TOP(res);
             if (res == NULL)
@@ -3673,7 +3462,10 @@ main_loop:
             PyObject *obj = TOP();
             PyObject *meth = NULL;
 
-            int meth_found = _PyObject_GetMethod(obj, name, &meth);
+            int meth_found = shadow.shadow == NULL
+                                 ? _PyObject_GetMethod(obj, name, &meth)
+                                 : _PyShadow_LoadMethodWithCache(
+                                       &shadow, next_instr, obj, name, &meth);
 
             if (meth == NULL) {
                 /* Most likely attribute wasn't found. */
@@ -3942,6 +3734,532 @@ main_loop:
             DISPATCH();
         }
 
+        case TARGET(SHADOW_NOP): {
+            DISPATCH();
+        }
+
+        case TARGET(LOAD_GLOBAL_CACHED): {
+            GlobalCacheEntry *entry = (GlobalCacheEntry *) _PyShadow_GetGlobal(
+                &shadow, oparg);
+            PyObject *v;
+            uint64_t gv = ((PyDictObject *) f->f_globals)->ma_version_tag;
+            uint64_t bv = ((PyDictObject *) f->f_builtins)->ma_version_tag;
+            if (_PyShadow_GlobalIsValid(entry, gv, bv)) {
+                INLINE_CACHE_RECORD_STAT(LOAD_GLOBAL, hits);
+                v = entry->value;
+            } else {
+                PyObject *name = entry->name;
+
+                v = _PyDict_LoadGlobal((PyDictObject *)f->f_globals,
+                                    (PyDictObject *)f->f_builtins,
+                                    name);
+                if (v == NULL) {
+                    if (!_PyErr_OCCURRED()) {
+                        /* _PyDict_LoadGlobal() returns NULL without raising
+                         * an exception if the key doesn't exist */
+                        format_exc_check_arg(
+                            tstate, PyExc_NameError, NAME_ERROR_MSG, name);
+                    }
+                    goto error;
+                }
+                entry->value = v;
+                entry->version = (gv > bv) ? gv : bv;
+            }
+            Py_INCREF(v);
+            PUSH(v);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_NO_DICT_DESCR): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res = _PyShadow_LoadAttrNoDictDescr(
+                &shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_DICT_DESCR): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res =
+                _PyShadow_LoadAttrDictDescr(&shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_DICT_NO_DESCR): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res = _PyShadow_LoadAttrDictNoDescr(
+                &shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_SLOT): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res =
+                _PyShadow_LoadAttrSlot(&shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            SET_TOP(res);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_SPLIT_DICT): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res =
+                _PyShadow_LoadAttrSplitDict(&shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            SET_TOP(res);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_SPLIT_DICT_DESCR): {
+            /* Normal descriptor + split dict.  We're probably looking up a
+             * method and likely have a splitoffset of -1 */
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *res = _PyShadow_LoadAttrSplitDictDescr(
+                &shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_TYPE): {
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            PyObject *owner = TOP();
+            PyObject *res =
+                _PyShadow_LoadAttrType(&shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_MODULE): {
+            PyObject *owner = TOP();
+            _PyShadow_ModuleAttrEntry *entry =
+                _PyShadow_GetModuleAttr(&shadow, oparg);
+            PyObject *res =
+                _PyShadow_LoadAttrModule(&shadow, next_instr, entry, owner);
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_UNCACHABLE): {
+            PyObject *name = GETITEM(names, oparg);
+            PyObject *owner = TOP();
+            INLINE_CACHE_UNCACHABLE_TYPE(Py_TYPE(owner));
+
+            INLINE_CACHE_RECORD_STAT(LOAD_ATTR_UNCACHABLE, hits);
+            PyObject *res = PyObject_GetAttr(owner, name);
+            Py_DECREF(owner);
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+            DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_POLYMORPHIC): {
+            PyObject *owner = TOP();
+            _PyShadow_InstanceAttrEntry **entries =
+                _PyShadow_GetPolymorphicAttr(&shadow, oparg);
+            PyObject *res;
+            PyTypeObject *type = Py_TYPE(owner);
+            for (int i = 0; i < POLYMORPHIC_CACHE_SIZE; i++) {
+                _PyShadow_InstanceAttrEntry *entry = entries[i];
+                if (entry == NULL) {
+                    continue;
+                } else if (entry->type != type) {
+                    if (entry->type == NULL) {
+                        Py_CLEAR(entries[i]);
+                    }
+                    continue;
+                }
+
+                switch (((_PyCacheType *)Py_TYPE(entry))->load_attr_opcode) {
+                case LOAD_ATTR_NO_DICT_DESCR:
+                    res = _PyShadow_LoadAttrNoDictDescrHit(entry, owner);
+                    break;
+                case LOAD_ATTR_DICT_DESCR:
+                    res = _PyShadow_LoadAttrDictDescrHit(entry, owner);
+                    break;
+                case LOAD_ATTR_DICT_NO_DESCR:
+                    res = _PyShadow_LoadAttrDictNoDescrHit(entry, owner);
+                    break;
+                case LOAD_ATTR_SLOT:
+                    res = _PyShadow_LoadAttrSlotHit(entry, owner);
+                    break;
+                case LOAD_ATTR_SPLIT_DICT:
+                    res = _PyShadow_LoadAttrSplitDictHit(entry, owner);
+                    break;
+                case LOAD_ATTR_SPLIT_DICT_DESCR:
+                    res = _PyShadow_LoadAttrSplitDictDescrHit(entry, owner);
+                    break;
+                default:
+                    Py_UNREACHABLE();
+                    return NULL;
+                }
+                if (res == NULL)
+                    goto error;
+
+                Py_DECREF(owner);
+                SET_TOP(res);
+                FAST_DISPATCH();
+            }
+            res = _PyShadow_LoadAttrPolymorphic(
+                &shadow, next_instr, entries, owner);
+
+            if (res == NULL)
+                goto error;
+
+            Py_DECREF(owner);
+            SET_TOP(res);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(STORE_ATTR_UNCACHABLE): {
+            PyObject *name = GETITEM(names, oparg);
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            int err;
+            STACK_SHRINK(2);
+            err = PyObject_SetAttr(owner, name, v);
+            Py_DECREF(v);
+            Py_DECREF(owner);
+            if (err != 0)
+                goto error;
+            DISPATCH();
+        }
+
+        case TARGET(STORE_ATTR_DICT): {
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            if (_PyShadow_StoreAttrDict(
+                    &shadow, next_instr, entry, owner, v)) {
+                goto error;
+            }
+
+            STACK_SHRINK(2);
+            Py_DECREF(v);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(STORE_ATTR_DESCR): {
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            if (_PyShadow_StoreAttrDescr(
+                    &shadow, next_instr, entry, owner, v)) {
+                goto error;
+            }
+
+            STACK_SHRINK(2);
+            Py_DECREF(v);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(STORE_ATTR_SPLIT_DICT): {
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            if (_PyShadow_StoreAttrSplitDict(
+                    &shadow, next_instr, entry, owner, v)) {
+                goto error;
+            }
+
+            STACK_SHRINK(2);
+            Py_DECREF(v);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(STORE_ATTR_SLOT): {
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            _PyShadow_InstanceAttrEntry *entry =
+                _PyShadow_GetInstanceAttr(&shadow, oparg);
+            if (_PyShadow_StoreAttrSlot(
+                    &shadow, next_instr, entry, owner, v)) {
+                goto error;
+            }
+
+            STACK_SHRINK(2);
+            Py_DECREF(v);
+            Py_DECREF(owner);
+            FAST_DISPATCH();
+        }
+
+#define SHADOW_LOAD_METHOD(func, type, helper)                                \
+    PyObject *obj = TOP();                                                    \
+    PyObject *meth = NULL;                                                    \
+    type *entry = helper(&shadow, oparg);                                     \
+    int meth_found = func(&shadow, next_instr, entry, obj, &meth);            \
+    if (meth == NULL) {                                                       \
+        /* Most likely attribute wasn't found. */                             \
+        goto error;                                                           \
+    }                                                                         \
+    if (meth_found) {                                                         \
+        SET_TOP(meth);                                                        \
+        PUSH(obj);                                                            \
+    } else {                                                                  \
+        SET_TOP(NULL);                                                        \
+        Py_DECREF(obj);                                                       \
+        PUSH(meth);                                                           \
+    }                                                                         \
+    FAST_DISPATCH();
+
+        case TARGET(LOAD_METHOD_MODULE): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodModule,
+                               _PyShadow_ModuleAttrEntry,
+                               _PyShadow_GetModuleAttr);
+        }
+
+        case TARGET(LOAD_METHOD_SPLIT_DICT_DESCR): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodSplitDictDescr,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_DICT_DESCR): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodDictDescr,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_NO_DICT_DESCR): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodNoDictDescr,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_TYPE): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodType,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_DICT_METHOD): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodDictMethod,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_SPLIT_DICT_METHOD): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodSplitDictMethod,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_NO_DICT_METHOD): {
+            SHADOW_LOAD_METHOD(_PyShadow_LoadMethodNoDictMethod,
+                               _PyShadow_InstanceAttrEntry,
+                               _PyShadow_GetInstanceAttr);
+        }
+
+        case TARGET(LOAD_METHOD_UNCACHABLE): {
+            /* Designed to work in tandem with CALL_METHOD. */
+            PyObject *name = GETITEM(names, oparg);
+            PyObject *obj = TOP();
+            PyObject *meth = NULL;
+
+            int meth_found = _PyObject_GetMethod(obj, name, &meth);
+
+            if (meth == NULL) {
+                /* Most likely attribute wasn't found. */
+                goto error;
+            }
+
+            if (meth_found) {
+                /* We can bypass temporary bound method object.
+                   meth is unbound method and obj is self.
+
+                   meth | self | arg1 | ... | argN
+                 */
+                SET_TOP(meth);
+                PUSH(obj); // self
+            } else {
+                /* meth is not an unbound method (but a regular attr, or
+                   something was returned by a descriptor protocol).  Set
+                   the second element of the stack to NULL, to signal
+                   CALL_METHOD that it's not a method call.
+
+                   NULL | meth | arg1 | ... | argN
+                */
+                SET_TOP(NULL);
+                Py_DECREF(obj);
+                PUSH(meth);
+            }
+            DISPATCH();
+        }
+
+        case TARGET(BINARY_SUBSCR_TUPLE_CONST_INT): {
+            PyObject *res;
+            PyObject *container = TOP();
+            if (PyTuple_CheckExact(container)) {
+                Py_ssize_t i = (Py_ssize_t)oparg;
+                if (i < 0) {
+                    i += PyTuple_GET_SIZE(container);
+                }
+                if (i < 0 || i >= Py_SIZE(container)) {
+                    PyErr_SetString(PyExc_IndexError,
+                                    "tuple index out of range");
+                    res = NULL;
+                } else {
+                    res = ((PyTupleObject *)container)->ob_item[oparg];
+                    Py_INCREF(res);
+                }
+            } else {
+                PyObject *sub = PyLong_FromLong(oparg);
+                res = PyObject_GetItem(container, sub);
+                Py_DECREF(sub);
+            }
+            Py_DECREF(container);
+
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+            // This shadow code is applied when we have
+            //      LOAD_CONST i
+            //      BINARY_SUBSCR
+            // And is patched into BINARY_SUBSCR_TUPLE_CONST_INT i
+            // at the position of LOAD_CONST.
+            // This means that we should always skip the next instruction
+            // (i.e. the BINARY_SUBSCR)
+            NEXTOPARG();
+
+            FAST_DISPATCH();
+        }
+        case TARGET(BINARY_SUBSCR_DICT_STR): {
+            PyObject *res;
+            PyObject *sub = POP();
+            PyObject *container = TOP();
+            if (PyDict_CheckExact(container) && PyUnicode_CheckExact(sub)) {
+                res = PyDict_GetItemWithError(container, sub);
+                if (res == NULL) {
+                    _PyErr_SetKeyError(sub);
+                } else {
+                    Py_INCREF(res);
+                }
+            } else {
+                _PyShadow_PatchByteCode(
+                    &shadow, next_instr, BINARY_SUBSCR, oparg);
+                res = PyObject_GetItem(container, sub);
+            }
+
+            Py_DECREF(container);
+            Py_DECREF(sub);
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+            FAST_DISPATCH();
+        }
+
+        case TARGET(BINARY_SUBSCR_TUPLE): {
+            PyObject *res;
+            PyObject *sub = POP();
+            PyObject *container = TOP();
+            if (PyTuple_CheckExact(container)) {
+                res = _PyTuple_Subscript(container, sub);
+            } else {
+                _PyShadow_PatchByteCode(
+                    &shadow, next_instr, BINARY_SUBSCR, oparg);
+                res = PyObject_GetItem(container, sub);
+            }
+
+            Py_DECREF(container);
+            Py_DECREF(sub);
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+            FAST_DISPATCH();
+        }
+
+        case TARGET(BINARY_SUBSCR_LIST): {
+            PyObject *res;
+            PyObject *sub = POP();
+            PyObject *container = TOP();
+            if (PyList_CheckExact(container)) {
+                res = _PyList_Subscript(container, sub);
+            } else {
+                _PyShadow_PatchByteCode(
+                    &shadow, next_instr, BINARY_SUBSCR, oparg);
+                res = PyObject_GetItem(container, sub);
+            }
+
+            Py_DECREF(container);
+            Py_DECREF(sub);
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+            FAST_DISPATCH();
+        }
+
+        case TARGET(BINARY_SUBSCR_DICT): {
+            PyObject *res;
+            PyObject *sub = POP();
+            PyObject *container = TOP();
+            if (PyDict_CheckExact(container)) {
+                res = _PyDict_GetItemMissing(container, sub);
+            } else {
+                _PyShadow_PatchByteCode(
+                    &shadow, next_instr, BINARY_SUBSCR, oparg);
+                res = PyObject_GetItem(container, sub);
+            }
+
+            Py_DECREF(container);
+            Py_DECREF(sub);
+            SET_TOP(res);
+            if (res == NULL)
+                goto error;
+
+            FAST_DISPATCH();
+        }
+
         case TARGET(EXTENDED_ARG): {
             int oldoparg = oparg;
             NEXTOPARG();
@@ -4089,6 +4407,7 @@ exit_eval_frame:
         dtrace_function_return(f);
     _Py_LeaveRecursiveCall(tstate);
     tstate->frame = f->f_back;
+    co->co_cache.curcalls--;
 
     return _Py_CheckFunctionResult(tstate, NULL, retval, __func__);
 }

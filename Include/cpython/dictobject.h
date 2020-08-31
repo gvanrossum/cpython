@@ -82,3 +82,9 @@ typedef struct {
 
 PyAPI_FUNC(PyObject *) _PyDictView_New(PyObject *, PyTypeObject *);
 PyAPI_FUNC(PyObject *) _PyDictView_Intersect(PyObject* self, PyObject *other);
+
+PyAPI_FUNC(PyObject *) _PyDict_GetItemMissing(PyObject *mp, PyObject *key);
+PyAPI_FUNC(void)
+_PyDict_IncVersionForSet(PyDictObject *mp);
+PyAPI_FUNC(Py_ssize_t)
+_PyDictKeys_GetSplitIndex(PyDictKeysObject *keys, PyObject *key);

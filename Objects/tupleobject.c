@@ -869,6 +869,12 @@ tuplesubscript(PyTupleObject* self, PyObject* item)
     }
 }
 
+PyObject *
+_PyTuple_Subscript(PyObject *self, PyObject *item)
+{
+    return tuplesubscript((PyTupleObject *)self, item);
+}
+
 /*[clinic input]
 tuple.__getnewargs__
 [clinic start generated code]*/

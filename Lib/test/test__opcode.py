@@ -1,5 +1,6 @@
 import dis
 from test.support.import_helper import import_module
+import opcode
 import unittest
 
 _opcode = import_module("_opcode")
@@ -19,6 +20,10 @@ class OpcodeTests(unittest.TestCase):
         self.assertRaises(ValueError, stack_effect, dis.opmap['POP_TOP'], 0)
         # All defined opcodes
         for name, code in dis.opmap.items():
+            # TODO(T74641077) - Figure out how to deal with static python opcodes
+            if code in opcode.shadowop:
+                continue
+
             with self.subTest(opname=name):
                 if code < dis.HAVE_ARGUMENT:
                     stack_effect(code)
@@ -48,6 +53,10 @@ class OpcodeTests(unittest.TestCase):
         # All defined opcodes
         has_jump = dis.hasjabs + dis.hasjrel
         for name, code in dis.opmap.items():
+            # TODO(T74641077) - Figure out how to deal with static python opcodes
+            if code in opcode.shadowop:
+                continue
+
             with self.subTest(opname=name):
                 if code < dis.HAVE_ARGUMENT:
                     common = stack_effect(code)

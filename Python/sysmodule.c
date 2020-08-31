@@ -23,6 +23,7 @@ Data members:
 #include "pycore_pylifecycle.h"   // _PyErr_WriteUnraisableDefaultHook()
 #include "pycore_pymem.h"         // _PyMem_SetDefaultAllocator()
 #include "pycore_pystate.h"       // _PyThreadState_GET()
+#include "pycore_shadowcode.h"    // _PyShadow_ClearCache
 #include "pycore_tuple.h"         // _PyTuple_FromArray()
 
 #include "code.h"
@@ -1930,6 +1931,13 @@ sys_getandroidapilevel_impl(PyObject *module)
 #endif   /* ANDROID_API_LEVEL */
 
 
+static PyObject *
+clear_shadow_cache(PyObject *self, PyObject *obj)
+{
+    _PyShadow_ClearCache(obj);
+    Py_RETURN_NONE;
+}
+
 
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
@@ -1937,6 +1945,7 @@ static PyMethodDef sys_methods[] = {
     {"audit",           (PyCFunction)(void(*)(void))sys_audit, METH_FASTCALL, audit_doc },
     {"breakpointhook",  (PyCFunction)(void(*)(void))sys_breakpointhook,
      METH_FASTCALL | METH_KEYWORDS, breakpointhook_doc},
+    {"_clear_shadow_cache", clear_shadow_cache, METH_O, ""},
     SYS__CLEAR_TYPE_CACHE_METHODDEF
     SYS__CURRENT_FRAMES_METHODDEF
     SYS_DISPLAYHOOK_METHODDEF

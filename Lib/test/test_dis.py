@@ -2,6 +2,7 @@
 
 from test.support import captured_stdout
 from test.support.bytecode_helper import BytecodeTestCase
+from opcode import shadowop
 import unittest
 import sys
 import dis
@@ -500,7 +501,7 @@ class DisTests(unittest.TestCase):
         for opcode, opname in enumerate(dis.opname):
             if opname in ('BUILD_MAP_UNPACK_WITH_CALL',
                           'BUILD_TUPLE_UNPACK_WITH_CALL',
-                          'JUMP_IF_NOT_EXC_MATCH'):
+                          'JUMP_IF_NOT_EXC_MATCH') or opcode in shadowop:
                 continue
             with self.subTest(opname=opname):
                 width = dis._OPNAME_WIDTH

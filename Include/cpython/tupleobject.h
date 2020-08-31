@@ -26,3 +26,5 @@ PyAPI_FUNC(void) _PyTuple_MaybeUntrack(PyObject *);
 #define PyTuple_SET_ITEM(op, i, v) (_PyTuple_CAST(op)->ob_item[i] = v)
 
 PyAPI_FUNC(void) _PyTuple_DebugMallocStats(FILE *out);
+
+PyAPI_FUNC(PyObject *) _PyTuple_Subscript(PyObject *self, PyObject *item);

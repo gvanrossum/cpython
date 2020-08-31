@@ -2243,6 +2243,11 @@ dict_subscript(PyDictObject *mp, PyObject *key)
     return value;
 }
 
+PyAPI_FUNC(PyObject *) _PyDict_GetItemMissing(PyObject *mp, PyObject *key)
+{
+    return dict_subscript((PyDictObject *)mp, key);
+}
+
 static int
 dict_ass_sub(PyDictObject *mp, PyObject *v, PyObject *w)
 {
@@ -5049,6 +5054,7 @@ _PyObjectDict_SetItem(PyTypeObject *tp, PyObject **dictptr,
             // always converts dict to combined form.
             if ((cached = CACHED_KEYS(tp)) != NULL) {
                 CACHED_KEYS(tp) = NULL;
+                PyType_Modified(tp);
                 dictkeys_decref(cached);
             }
         }
@@ -5078,6 +5084,7 @@ _PyObjectDict_SetItem(PyTypeObject *tp, PyObject **dictptr,
                 else {
                     CACHED_KEYS(tp) = NULL;
                 }
+                PyType_Modified(tp);
                 dictkeys_decref(cached);
                 if (CACHED_KEYS(tp) == NULL && PyErr_Occurred())
                     return -1;
@@ -5104,4 +5111,41 @@ void
 _PyDictKeys_DecRef(PyDictKeysObject *keys)
 {
     dictkeys_decref(keys);
+}
+
+void
+_PyDict_IncVersionForSet(PyDictObject *mp)
+{
+    mp->ma_version_tag = DICT_NEXT_VERSION();
+}
+
+Py_ssize_t
+_PyDictKeys_GetSplitIndex(PyDictKeysObject *keys, PyObject *key) {
+    Py_hash_t hash;
+    if (!PyUnicode_CheckExact(key) ||
+        (hash = ((PyASCIIObject *) key)->hash) == -1) {
+        hash = PyObject_Hash(key);
+    }
+
+    PyDictKeyEntry *ep0 = DK_ENTRIES(keys);
+    size_t mask = DK_MASK(keys);
+    size_t perturb = (size_t)hash;
+    size_t i = (size_t)hash & mask;
+
+    for (;;) {
+        Py_ssize_t ix = dictkeys_get_index(keys, i);
+        assert (ix != DKIX_DUMMY);
+        if (ix == DKIX_EMPTY) {
+            return DKIX_EMPTY;
+        }
+        PyDictKeyEntry *ep = &ep0[ix];
+        assert(ep->me_key != NULL);
+        assert(PyUnicode_CheckExact(ep->me_key));
+        if (ep->me_key == key ||
+            (ep->me_hash == hash && unicode_eq(ep->me_key, key))) {
+            return ix;
+        }
+        perturb >>= PERTURB_SHIFT;
+        i = mask & (i*5 + perturb + 1);
+    }
 }

@@ -32,3 +32,5 @@ PyAPI_FUNC(void) _PyList_DebugMallocStats(FILE *out);
 #define PyList_GET_ITEM(op, i) (_PyList_CAST(op)->ob_item[i])
 #define PyList_SET_ITEM(op, i, v) (_PyList_CAST(op)->ob_item[i] = (v))
 #define PyList_GET_SIZE(op)    Py_SIZE(_PyList_CAST(op))
+
+PyAPI_FUNC(PyObject *) _PyList_Subscript(PyObject *self, PyObject *item);

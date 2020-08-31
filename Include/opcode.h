@@ -127,6 +127,38 @@ extern "C" {
 #define SET_UPDATE              163
 #define DICT_MERGE              164
 #define DICT_UPDATE             165
+#define BINARY_SUBSCR_TUPLE_CONST_INT 225
+#define BINARY_SUBSCR_DICT_STR  226
+#define BINARY_SUBSCR_LIST      227
+#define BINARY_SUBSCR_TUPLE     228
+#define BINARY_SUBSCR_DICT      229
+#define LOAD_METHOD_UNCACHABLE  230
+#define LOAD_METHOD_MODULE      231
+#define LOAD_METHOD_TYPE        232
+#define LOAD_METHOD_SPLIT_DICT_DESCR 233
+#define LOAD_METHOD_SPLIT_DICT_METHOD 234
+#define LOAD_METHOD_DICT_DESCR  235
+#define LOAD_METHOD_DICT_METHOD 236
+#define LOAD_METHOD_NO_DICT_METHOD 237
+#define LOAD_METHOD_NO_DICT_DESCR 238
+#define STORE_ATTR_SLOT         239
+#define STORE_ATTR_SPLIT_DICT   240
+#define STORE_ATTR_DESCR        241
+#define STORE_ATTR_UNCACHABLE   242
+#define STORE_ATTR_DICT         243
+#define LOAD_ATTR_POLYMORPHIC   244
+#define LOAD_ATTR_SLOT          245
+#define LOAD_ATTR_MODULE        246
+#define LOAD_ATTR_TYPE          247
+#define LOAD_ATTR_SPLIT_DICT_DESCR 248
+#define LOAD_ATTR_SPLIT_DICT    249
+#define LOAD_ATTR_DICT_NO_DESCR 250
+#define LOAD_ATTR_NO_DICT_DESCR 251
+#define LOAD_ATTR_DICT_DESCR    252
+#define LOAD_ATTR_UNCACHABLE    253
+#define LOAD_GLOBAL_CACHED      254
+#define SHADOW_NOP              255
+
 #ifdef NEED_OPCODE_JUMP_TABLES
 static uint32_t _PyOpcode_RelativeJump[8] = {
     0U,
@@ -149,6 +181,7 @@ static uint32_t _PyOpcode_Jump[8] = {
     0U,
 };
 #endif /* OPCODE_TABLES */
+
 
 /* EXCEPT_HANDLER is a special, implicit block type which is created when
    entering an except handler. It is not an opcode but we define it here

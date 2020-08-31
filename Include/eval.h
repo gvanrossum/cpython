@@ -29,6 +29,9 @@ PyAPI_FUNC(PyObject *) _PyEval_EvalCodeWithName(
     PyObject *name, PyObject *qualname);
 
 PyAPI_FUNC(PyObject *) _PyEval_CallTracing(PyObject *func, PyObject *args);
+
+PyAPI_DATA(int) _PyEval_ShadowByteCodeEnabled; /* facebook */
+
 #endif
 
 #ifdef __cplusplus
