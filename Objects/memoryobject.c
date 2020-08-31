@@ -3215,7 +3215,7 @@ memoryiter_next(memoryiterobject *it)
     seq = it->it_seq;
     if (seq == NULL)
       return NULL;
-    assert (PyMemoryView_Check(seq));
+    assert(PyMemoryView_Check(seq));
 
     if (it->it_index < memory_length(seq)){
         return memory_item(seq, it->it_index++);
