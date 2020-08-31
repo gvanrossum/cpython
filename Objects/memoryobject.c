@@ -3193,16 +3193,16 @@ static PyTypeObject PyMemoryIter_Type = {
 static void
 memoryiter_dealloc(memoryiterobject *it)
 {
-  _PyObject_GC_UNTRACK(it);
-  Py_XDECREF(it->it_seq);
-  PyObject_GC_Del(it);
+    _PyObject_GC_UNTRACK(it);
+    Py_XDECREF(it->it_seq);
+    PyObject_GC_Del(it);
 }
 
 static int
 memoryiter_traverse(memoryiterobject *it, visitproc visit, void *arg)
 {
-  Py_VISIT(it->it_seq);
-  return 0;
+    Py_VISIT(it->it_seq);
+    return 0;
 }
 
 static PyObject *
@@ -3212,10 +3212,15 @@ memoryiter_next(memoryiterobject *it)
 
     assert(it != NULL);
     seq = it->it_seq;
-    if (seq == NULL)
-      return NULL;
+    if (seq == NULL) {
+        return NULL;
+    }
     assert(PyMemoryView_Check(seq));
 
+    if (seq->view.ndim != 1) {
+        PyErr_SetString(PyExc_NotImplementedError,
+            "multi-dimensional sub-views are not implemented");
+    }
     if (it->it_index < memory_length(seq)) {
         return memory_item(seq, it->it_index++);
     }
