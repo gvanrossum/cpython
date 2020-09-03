@@ -3233,17 +3233,7 @@ memory_iter(PyObject *seq)
         return NULL;
     }
 
-    memoryiterobject *it;
-    it = PyObject_GC_New(memoryiterobject, &PyMemoryIter_Type);
-    if (it == NULL) {
-        return NULL;
-    }
-
-    it->it_index = 0;
-    it->it_seq = (PyMemoryViewObject *)seq;
-    Py_INCREF(seq);
-
-    int ndims = it->it_seq->view.ndim;
+    int ndims = ((PyMemoryViewObject *)seq)->view.ndim;
     if (ndims == 0) {
         PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
         return NULL;
@@ -3253,6 +3243,16 @@ memory_iter(PyObject *seq)
             "multi-dimensional sub-views are not implemented");
         return NULL;
     }
+
+    memoryiterobject *it;
+    it = PyObject_GC_New(memoryiterobject, &PyMemoryIter_Type);
+    if (it == NULL) {
+        return NULL;
+    }
+    
+    it->it_index = 0;
+    Py_INCREF(seq);
+    it->it_seq = (PyMemoryViewObject *)seq;
     _PyObject_GC_TRACK(it);
     return (PyObject *)it;
 }
