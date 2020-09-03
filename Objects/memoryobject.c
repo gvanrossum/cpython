@@ -3170,6 +3170,8 @@ typedef struct {
     PyObject_HEAD
     Py_ssize_t it_index;
     PyMemoryViewObject *it_seq; // Set to NULL when iterator is exhausted
+    Py_ssize_t length;
+    const char *fmt;
 } memoryiterobject;
 
 
@@ -3207,6 +3209,26 @@ memoryiter_traverse(memoryiterobject *it, visitproc visit, void *arg)
     return 0;
 }
 
+static char *
+lookup_value(Py_buffer *view, char *ptr, Py_ssize_t index)
+{
+    Py_ssize_t nitems = view->shape[0];
+
+    // handle negative lookups (i.e [-2])
+    if (index < 0) {
+        index += nitems;
+    }
+    if (index < 0 || index >= nitems) {
+        PyErr_Format(PyExc_IndexError,
+                     "index out of bounds on dimension 1");
+        return NULL;
+    }
+
+    ptr += view->strides[0] * index;
+    ptr = ADJUST_PTR(ptr, view->suboffsets, 0);
+    return ptr;
+}
+
 static PyObject *
 memoryiter_next(memoryiterobject *it)
 {
@@ -3216,8 +3238,13 @@ memoryiter_next(memoryiterobject *it)
         return NULL;
     }
 
-    if (it->it_index < memory_length(seq)) {
-        return memory_item(seq, it->it_index++);
+    if (it->it_index < it->length) {
+        CHECK_RELEASED(seq);
+        char * ptr = lookup_value(&(seq->view), (char *)seq->view.buf, it->it_index++);
+        if (ptr == NULL) {
+            return NULL;
+        }
+        return unpack_single(ptr, it->fmt);
     }
 
     it->it_seq = NULL;
@@ -3232,8 +3259,8 @@ memory_iter(PyObject *seq)
         PyErr_BadInternalCall();
         return NULL;
     }
-
-    int ndims = ((PyMemoryViewObject *)seq)->view.ndim;
+    PyMemoryViewObject *obj = (PyMemoryViewObject *)seq;
+    int ndims = obj->view.ndim;
     if (ndims == 0) {
         PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
         return NULL;
@@ -3244,15 +3271,21 @@ memory_iter(PyObject *seq)
         return NULL;
     }
 
+    const char *fmt = adjust_fmt(&obj->view);
+    if (fmt == NULL) {
+        return NULL;
+    }
+
     memoryiterobject *it;
     it = PyObject_GC_New(memoryiterobject, &PyMemoryIter_Type);
     if (it == NULL) {
         return NULL;
     }
-    
+    it->fmt = fmt;
+    it->length = memory_length(obj);
     it->it_index = 0;
     Py_INCREF(seq);
-    it->it_seq = (PyMemoryViewObject *)seq;
+    it->it_seq = obj;
     _PyObject_GC_TRACK(it);
     return (PyObject *)it;
 }
