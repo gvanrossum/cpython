@@ -3170,8 +3170,8 @@ typedef struct {
     PyObject_HEAD
     Py_ssize_t it_index;
     PyMemoryViewObject *it_seq; // Set to NULL when iterator is exhausted
-    Py_ssize_t length;
-    const char *fmt;
+    Py_ssize_t it_length;
+    const char *it_fmt;
 } memoryiterobject;
 
 
@@ -3209,26 +3209,6 @@ memoryiter_traverse(memoryiterobject *it, visitproc visit, void *arg)
     return 0;
 }
 
-static char *
-lookup_value(Py_buffer *view, char *ptr, Py_ssize_t index)
-{
-    Py_ssize_t nitems = view->shape[0];
-
-    // handle negative lookups (i.e [-2])
-    if (index < 0) {
-        index += nitems;
-    }
-    if (index < 0 || index >= nitems) {
-        PyErr_Format(PyExc_IndexError,
-                     "index out of bounds on dimension 1");
-        return NULL;
-    }
-
-    ptr += view->strides[0] * index;
-    ptr = ADJUST_PTR(ptr, view->suboffsets, 0);
-    return ptr;
-}
-
 static PyObject *
 memoryiter_next(memoryiterobject *it)
 {
@@ -3238,13 +3218,17 @@ memoryiter_next(memoryiterobject *it)
         return NULL;
     }
 
-    if (it->it_index < it->length) {
+    if (it->it_index < it->it_length) {
         CHECK_RELEASED(seq);
-        char * ptr = lookup_value(&(seq->view), (char *)seq->view.buf, it->it_index++);
+        Py_buffer *view = &(seq->view);
+        char *ptr = (char *)seq->view.buf;
+
+        ptr += view->strides[0] * it->it_index++;
+        ptr = ADJUST_PTR(ptr, view->suboffsets, 0);
         if (ptr == NULL) {
             return NULL;
         }
-        return unpack_single(ptr, it->fmt);
+        return unpack_single(ptr, it->it_fmt);
     }
 
     it->it_seq = NULL;
@@ -3281,8 +3265,8 @@ memory_iter(PyObject *seq)
     if (it == NULL) {
         return NULL;
     }
-    it->fmt = fmt;
-    it->length = memory_length(obj);
+    it->it_fmt = fmt;
+    it->it_length = memory_length(obj);
     it->it_index = 0;
     Py_INCREF(seq);
     it->it_seq = obj;
