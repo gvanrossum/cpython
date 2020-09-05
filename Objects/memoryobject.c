@@ -3166,6 +3166,8 @@ static PyMethodDef memory_methods[] = {
 /*                          Memoryview Iterator                           */
 /**************************************************************************/
 
+static PyTypeObject PyMemoryIter_Type;
+
 typedef struct {
     PyObject_HEAD
     Py_ssize_t it_index;
@@ -3173,26 +3175,6 @@ typedef struct {
     Py_ssize_t it_length;
     const char *it_fmt;
 } memoryiterobject;
-
-
-static void memoryiter_dealloc(memoryiterobject *);
-static int memoryiter_traverse(memoryiterobject * , visitproc, void *);
-static PyObject *memoryiter_next(memoryiterobject *);
-static PyObject *memory_iter(PyObject *);
-
-
-static PyTypeObject PyMemoryIter_Type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    .tp_name = "memory_iterator",
-    .tp_basicsize = sizeof(memoryiterobject),
-    // methods
-    .tp_dealloc = (destructor)memoryiter_dealloc,
-    .tp_getattro = PyObject_GenericGetAttr,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_traverse = (traverseproc)memoryiter_traverse,
-    .tp_iter = PyObject_SelfIter,
-    .tp_iternext = (iternextfunc)memoryiter_next,
-};
 
 static void
 memoryiter_dealloc(memoryiterobject *it)
@@ -3273,6 +3255,19 @@ memory_iter(PyObject *seq)
     _PyObject_GC_TRACK(it);
     return (PyObject *)it;
 }
+
+static PyTypeObject PyMemoryIter_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    .tp_name = "memory_iterator",
+    .tp_basicsize = sizeof(memoryiterobject),
+    // methods
+    .tp_dealloc = (destructor)memoryiter_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)memoryiter_traverse,
+    .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc)memoryiter_next,
+};
 
 PyTypeObject PyMemoryView_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
