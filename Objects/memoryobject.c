@@ -2332,9 +2332,7 @@ ptr_from_tuple(Py_buffer *view, PyObject *tup)
 
 /* Return the item at index. In a one-dimensional view, this is an object
    with the type specified by view->format. Otherwise, the item is a sub-view.
-   The function is used by memory_subscript(), memoryiter_next() and
-   memory_as_sequence.
-   Note: Iteration of multi-dimensional arrays is not yet implemented */
+   The function is used in memory_subscript() and memory_as_sequence. */
 static PyObject *
 memory_item(PyMemoryViewObject *self, Py_ssize_t index)
 {
