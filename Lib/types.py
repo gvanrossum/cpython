@@ -300,36 +300,47 @@ EllipsisType = type(Ellipsis)
 NoneType = type(None)
 NotImplementedType = type(NotImplemented)
 
+class TracebackGroup:
+    def __init__(self, excs, frame):
+        self.tb_frame = frame
+        self.tb_next_map = {} # TODO: make it a weak key dict
+        for e in excs:
+            self.tb_next_map[e] = e.__traceback__
+
 class ExceptionGroup(BaseException):
 
-    def __init__(self, excs, tb=None):
+    def __init__(self, excs, frame=None):
         self.excs = set(excs)
-        if tb:
-            self.__traceback__ = tb
-        else:
-            import types
-            self.__traceback__ = types.TracebackType(
-                None, sys._getframe(), 0, 0)
-            for e in excs:
-                self.excs.add(e)
-                self.__traceback__.next_map_add(e, e.__traceback__)
+        self.frame = frame or sys._getframe()
+        # self.__traceback__ is updated as usual, but self.__traceback_group__
+        # is the frame where the exception group was created (and it is
+        # preserved on splits).  So __traceback_group__ + __traceback__
+        # gives us the full path.
+        import types
+        self.__traceback__ = types.TracebackType(None, self.frame, 0, 0)
+        self.__traceback_group__ = TracebackGroup(self.excs, self.frame)
 
     def split(self, E):
-        ''' remove the exceptions that match E
-        and return them in a new ExceptionGroup
+        ''' returns two new ExceptionGroups: match, rest
+        of the exceptions of self that match E and those
+        that don't.
+        match and rest have the same nested structure as self.
+        E can be a type or tuple of types.
         '''
-        matches = []
+        match, rest = [], []
         for e in self.excs:
-            if isinstance(e, E):
-                matches.append(e)
-        [self.excs.remove(m) for m in matches]
-        gtb = self.__traceback__
-        while gtb.tb_next:
-            # there could be normal tbs is the ExceptionGroup propagated
-            gtb = gtb.tb_next
-        tb = gtb.group_split(matches)
-
-        return ExceptionGroup(matches, tb)
+            if isinstance(e, ExceptionGroup): # recurse
+                e_match, e_rest = e.split(E)
+                match.append(e_match)
+                rest.append(e_rest)
+            else:
+                if isinstance(e, E):
+                    match.append(e)
+                    e_match, e_rest = e, None
+                else:
+                    rest.append(e)
+        frame = self.frame
+        return ExceptionGroup(match, frame),ExceptionGroup(rest, frame)
 
     def push_frame(self, frame):
         import types
@@ -339,18 +350,25 @@ class ExceptionGroup(BaseException):
     @staticmethod
     def render(exc, tb=None, indent=0):
         print(exc)
-        tb = tb or exc.__traceback__
+        try:
+            tb = tb or exc.__traceback__
+        except Exception as e:
+            import pdb; pdb.set_trace()
+            print(e)
         while tb:
             print(' '*indent, tb.tb_frame)
             if tb.tb_next: # single traceback
                 tb = tb.tb_next
-            elif tb.tb_next_map:
-                indent += 4
-                for e, t in tb.tb_next_map.items():
-                    print('---------------------------------------')
-                    ExceptionGroup.render(e, t, indent)
-                tb = None
             else:
+                # if this is an ExceptioGroup, follow
+                # __traceback_group__
+                if isinstance(exc, ExceptionGroup):
+                    tbg = exc.__traceback_group__
+                    assert tbg
+                    indent += 4
+                    for e, t in tbg.tb_next_map.items():
+                        print('---------------------------------------')
+                        ExceptionGroup.render(e, t, indent)
                 tb = None
 
     def __str__(self):

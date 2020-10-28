@@ -34,15 +34,15 @@ def handle_type_errors():
     try:
         propagator()
     except types.ExceptionGroup as e:
-        TEs = e.split(TypeError)
-        return e, TEs
+        TEs, rest = e.split(TypeError)
+        return TEs, rest
 
 def handle_value_errors():
     try:
         propagator()
     except types.ExceptionGroup as e:
-        VEs = e.split(ValueError)
-        return e, VEs
+        VEs, rest = e.split(ValueError)
+        return VEs, rest
 
 
 def main():
@@ -52,18 +52,18 @@ def main():
 
     print (">>>>>>>>>>>>>>>>>> handle_type_errors <<<<<<<<<<<<<<<<<<<<")
 
-    e, TEs = handle_type_errors()
+    TEs, rest = handle_type_errors()
     print ("\n\n\n ------------- The split-off Type Errors:")
     types.ExceptionGroup.render(TEs)
     print ("\n\n\n ------------- The remaining unhandled:")
-    types.ExceptionGroup.render(e)
+    types.ExceptionGroup.render(rest)
 
     print (">>>>>>>>>>>>>>>>>> handle_value_errors <<<<<<<<<<<<<<<<<<<<")
-    e, VEs = handle_value_errors()
+    VEs, rest = handle_value_errors()
     print ("\n\n\n ------------- The split-off Value Errors:")
     types.ExceptionGroup.render(VEs)
     print ("\n\n\n ------------- The remaining unhandled:")
-    types.ExceptionGroup.render(e)
+    types.ExceptionGroup.render(rest)
 
 if __name__ == '__main__':
     main()
