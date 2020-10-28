@@ -1,76 +1,100 @@
 Running Release|Win32 interpreter...
+
+
 >>>>>>>>>>>>>>>>>> get_exception_group <<<<<<<<<<<<<<<<<<<<
-{ExceptionGroup({ValueError('bad value: f0'), ValueError('bad value: g0')}), ValueError('bad value: g1'), ValueError('bad value: f1')}
- <frame at 0x016A3A70, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 41, code get_exception_group>
- <frame at 0x0168FC88, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 35, code propagator>
- <frame at 0x01146DA8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 32, code aggregator1>
+{TypeError('bad type: h1'), ValueError('bad value: f1'), ValueError('bad value: g1'), ExceptionGroup({ValueError('bad value: g0'), TypeError('bad type: h0'), ValueError('bad value: f0')})}
+ <frame at 0x0156A758, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 41, code get_exception_group>
+ <frame at 0x01570868, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 35, code propagator>
+ <frame at 0x014C6DA8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 32, code aggregator1>
 ---------------------------------------
-bad value: f0
-     <frame at 0x017141A0, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x016D02E8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
----------------------------------------
-bad value: g0
-     <frame at 0x017141A0, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x016D0708, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
----------------------------------------
-bad value: g1
-     <frame at 0x016CAD18, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 10, code g1>
-     <frame at 0x017151B0, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
+bad type: h1
+     <frame at 0x014CAA68, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 13, code h1>
+     <frame at 0x02254AA8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
 ---------------------------------------
 bad value: f1
-     <frame at 0x016D05A8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 7, code f1>
-     <frame at 0x016D0868, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
+     <frame at 0x022261B0, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 7, code f1>
+     <frame at 0x022241A0, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
+---------------------------------------
+bad value: g1
+     <frame at 0x015702E8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 10, code g1>
+     <frame at 0x01570708, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
+---------------------------------------
+bad value: g0
+     <frame at 0x014DDBE8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02254D48, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
+---------------------------------------
+bad type: h0
+     <frame at 0x014DDBE8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02254E98, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
+---------------------------------------
+bad value: f0
+     <frame at 0x014DDBE8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02254BF8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
+
+
 >>>>>>>>>>>>>>>>>> handle_type_errors <<<<<<<<<<<<<<<<<<<<
 
-
-
  ------------- The split-off Type Errors:
-[ExceptionGroup(set())]
+[ExceptionGroup({TypeError('bad type: h0')}), TypeError('bad type: h1')]
+---------------------------------------
+bad type: h0
+     <frame at 0x01543D60, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02265958, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
+---------------------------------------
+bad type: h1
+     <frame at 0x02267028, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 13, code h1>
+     <frame at 0x02265568, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
 
 
 
  ------------- The remaining unhandled:
-[ExceptionGroup({ValueError('bad value: f0'), ValueError('bad value: g0')}), ValueError('bad value: f1'), ValueError('bad value: g1')]
+[ValueError('bad value: g1'), ExceptionGroup({ValueError('bad value: g0'), ValueError('bad value: f0')}), ValueError('bad value: f1')]
 ---------------------------------------
 bad value: g1
-     <frame at 0x0114ACF8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 10, code g1>
-     <frame at 0x01747D48, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
----------------------------------------
-bad value: f0
-     <frame at 0x016A3D60, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x01747E98, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
----------------------------------------
-bad value: g0
-     <frame at 0x016A3D60, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x01756028, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
+     <frame at 0x014CAE40, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 10, code g1>
+     <frame at 0x02265418, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
 ---------------------------------------
 bad value: f1
-     <frame at 0x0114ABB0, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 7, code f1>
-     <frame at 0x01747BF8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
+     <frame at 0x014CACF8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 7, code f1>
+     <frame at 0x022652C8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
+---------------------------------------
+bad value: g0
+     <frame at 0x01543D60, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02265808, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
+---------------------------------------
+bad value: f0
+     <frame at 0x01543D60, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x022656B8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
+
+
 >>>>>>>>>>>>>>>>>> handle_value_errors <<<<<<<<<<<<<<<<<<<<
 
-
-
  ------------- The split-off Value Errors:
-[ValueError('bad value: f1'), ExceptionGroup({ValueError('bad value: g0'), ValueError('bad value: f0')}), ValueError('bad value: g1')]
+[ValueError('bad value: g1'), ExceptionGroup({ValueError('bad value: g0'), ValueError('bad value: f0')}), ValueError('bad value: f1')]
 ---------------------------------------
 bad value: g0
-     <frame at 0x0174D318, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x01756568, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
+     <frame at 0x0225C318, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02268028, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
 ---------------------------------------
 bad value: f0
-     <frame at 0x0174D318, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 22, code aggregator>
-     <frame at 0x01756418, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
----------------------------------------
-bad value: f1
-     <frame at 0x01758028, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 7, code f1>
-     <frame at 0x01756178, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 6, code f>
+     <frame at 0x0225C318, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02265E98, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
 ---------------------------------------
 bad value: g1
-     <frame at 0x01758170, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 10, code g1>
-     <frame at 0x017562C8, file 'C:\\Users\\User\\src\\cpython\\exception_group.py', line 9, code g>
-
-
+     <frame at 0x02267400, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 10, code g1>
+     <frame at 0x02265BF8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 9, code g>
+---------------------------------------
+bad value: f1
+     <frame at 0x022672B8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 7, code f1>
+     <frame at 0x02265AA8, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 6, code f>
 
  ------------- The remaining unhandled:
-[ExceptionGroup(set())]
+[TypeError('bad type: h1'), ExceptionGroup({TypeError('bad type: h0')})]
+---------------------------------------
+bad type: h1
+     <frame at 0x02267548, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 13, code h1>
+     <frame at 0x02265D48, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
+---------------------------------------
+bad type: h0
+     <frame at 0x0225C318, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 22, code aggregator>
+     <frame at 0x02268178, file 'C:\\Users\\User\\src\\cpython\\exception_group_test.py', line 12, code h>
