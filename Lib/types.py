@@ -318,20 +318,21 @@ class ExceptionGroup(BaseException):
     def __init__(self, excs):
         self.excs = set(excs)
         # self.__traceback__ is updated as usual, but self.__traceback_group__
-        # is the frame where the exception group was created (and it is
-        # preserved on splits).  So __traceback_group__ + __traceback__
+        # is set when the exception group is created (and it is preserved on 
+        # splits).  So __traceback_group__ + __traceback__
         # gives us the full path.
         import types
         self.__traceback__ = None # will be set when the traceback group is raised
         self.__traceback_group__ = TracebackGroup(self.excs)
 
     def split(self, E):
-        ''' returns two new ExceptionGroups: match, rest
-        of the exceptions of self that match E and those
-        that don't.
+        """Split an ExceptionGroup to extract exceptions matching E
+        
+        returns two new ExceptionGroups: match, rest of the exceptions of 
+        self that match E and those that don't.
         match and rest have the same nested structure as self.
         E can be a type or tuple of types.
-        '''
+        """
         match, rest = [], []
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
@@ -344,8 +345,7 @@ class ExceptionGroup(BaseException):
                     e_match, e_rest = e, None
                 else:
                     rest.append(e)
-        frame = self.frame
-        return ExceptionGroup(match, frame),ExceptionGroup(rest, frame)
+        return ExceptionGroup(match),ExceptionGroup(rest)
 
     def push_frame(self, frame):
         import types
@@ -353,16 +353,12 @@ class ExceptionGroup(BaseException):
             self.__traceback__, frame, 0, 0)
 
     @staticmethod
-    def _render_simple_tb(exc, tb=None, indent=0):
-        tb = tb or exc.__traceback__
-        while tb and not isinstance(tb, TracebackGroup):
-            print('[0]',' '*indent, tb.tb_frame)
-            tb = tb.tb_next
-
-    @staticmethod
     def render(exc, tb=None, indent=0):
         print(exc)
-        ExceptionGroup._render_simple_tb(exc, tb, indent)
+        tb = tb or exc.__traceback__
+        while tb and not isinstance(tb, TracebackGroup):
+            print(' '*indent, tb.tb_frame)
+            tb = tb.tb_next
         if isinstance(exc, ExceptionGroup):
             tbg = exc.__traceback_group__
             assert isinstance(tbg, TracebackGroup)
@@ -380,10 +376,7 @@ class ExceptionGroup(BaseException):
             else:
                 yield e
 
-    def __str__(self):
-        return f"ExceptionGroup({self.excs})"
-
     def __repr__(self):
-        return str(self)
+        return f"ExceptionGroup({self.excs})"
 
 __all__ = [n for n in globals() if n[:1] != '_']

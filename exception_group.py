@@ -59,7 +59,7 @@ def main():
     print (">>>>>>>>>>>>>>>>>> get_exception_group <<<<<<<<<<<<<<<<<<<<")
     e = get_exception_group()
     types.ExceptionGroup.render(e)
-    return
+
     print (">>>>>>>>>>>>>>>>>> handle_type_errors <<<<<<<<<<<<<<<<<<<<")
 
     TEs, rest = handle_type_errors()
