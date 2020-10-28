@@ -51,7 +51,6 @@ tb_create_raw(PyTracebackObject *next, PyFrameObject *frame, int lasti,
         tb->tb_frame = frame;
         tb->tb_lasti = lasti;
         tb->tb_lineno = lineno;
-        tb->tb_next_map = NULL;
         PyObject_GC_Track(tb);
     }
     return (PyObject *)tb;
@@ -68,7 +67,6 @@ TracebackType.__new__ as tb_new
 
 Create a new traceback object.
 [clinic start generated code]*/
-
 
 static PyObject *
 tb_new_impl(PyTypeObject *type, PyObject *tb_next, PyFrameObject *tb_frame,
@@ -90,7 +88,7 @@ tb_new_impl(PyTypeObject *type, PyObject *tb_next, PyFrameObject *tb_frame,
 static PyObject *
 tb_dir(PyTracebackObject *self, PyObject *Py_UNUSED(ignored))
 {
-    return Py_BuildValue("[sssss]", "tb_frame", "tb_next", "tb_next_map",
+    return Py_BuildValue("[ssss]", "tb_frame", "tb_next",
                                    "tb_lasti", "tb_lineno");
 }
 
@@ -112,10 +110,6 @@ tb_next_set(PyTracebackObject *self, PyObject *new_next, void *Py_UNUSED(_))
         PyErr_Format(PyExc_TypeError, "can't delete tb_next attribute");
         return -1;
     }
-    if (self->tb_next_map && new_next != Py_None) {
-        PyErr_Format(PyExc_ValueError, "can't have both tb_next and tb_next_map [2]");
-        return -1;
-    }
 
     /* We accept None or a traceback object, and map None -> NULL (inverse of
        tb_next_get) */
@@ -129,7 +123,6 @@ tb_next_set(PyTracebackObject *self, PyObject *new_next, void *Py_UNUSED(_))
     }
 
     /* Check for loops */
-
     PyTracebackObject *cursor = (PyTracebackObject *)new_next;
     while (cursor) {
         if (cursor == self) {
@@ -147,119 +140,10 @@ tb_next_set(PyTracebackObject *self, PyObject *new_next, void *Py_UNUSED(_))
     return 0;
 }
 
-static PyObject *
-tb_next_map_get(PyTracebackObject *self, void *Py_UNUSED(_))
-{
-    PyObject* ret = (PyObject*)self->tb_next_map;
-    if (!ret) {
-        ret = Py_None;
-    }
-    Py_INCREF(ret);
-    return ret;
-}
 
-
-static int
-tb_next_map_add_impl(PyTracebackObject *self, PyObject *exc, PyTracebackObject *tb) {
-
-    /* Check for loops */
-/*
-// TODO: loop detection for map
-    PyTracebackObject *cursor = (PyTracebackObject *)new_next;
-    while (cursor) {
-        if (cursor == self) {
-            PyErr_Format(PyExc_ValueError, "traceback loop detected");
-            return -1;
-        }
-        cursor = cursor->tb_next;
-    }
-*/
-
-    if (!self->tb_next_map) {
-        if (self->tb_next != NULL && (PyObject*)self->tb_next != Py_None) {
-            PyErr_Format(PyExc_ValueError, "can't have both tb_next and tb_next_map [1]");
-            return -1;
-        }
-        self->tb_next_map = PyDict_New();
-        if (!self->tb_next_map) {
-            PyErr_Format(PyExc_ValueError, "dict create failed");
-            return -1;
-        }
-    }
-    if (PyDict_SetItem(self->tb_next_map, exc, (PyObject*)tb) < 0) {
-        fprintf(stderr, "dict setitem failed");
-        PyErr_Format(PyExc_ValueError, "dict setitem failed");
-        return -1;
-    }
-    return 0;
-}
-
-static PyObject *
-tb_next_map_add(PyTracebackObject *self, PyObject *args) {
-    PyObject *exc;
-    PyObject *tb_;
-    if (!PyArg_ParseTuple(args, "OO", &exc, &tb_)) {
-        return NULL;
-    }
-    PyTracebackObject *tb = (PyTracebackObject *)tb_;
-    if (tb_next_map_add_impl(self, exc, tb) == -1) {
-        return NULL;
-    }
-    return Py_None;
-}
-
-static PyTracebackObject *
-tb_group_split(PyTracebackObject *self, PyObject *args) {
-    PyObject *excs;
-    if (!PyArg_ParseTuple(args, "O", &excs))
-        return NULL;
-
-    //remove excs from this tb group and return a
-    //new tb group for them, with same frame
-    if (self->tb_next) {
-        PyErr_Format(PyExc_TypeError, "not a traceback group");
-        return NULL;
-    }
-    if (!PyList_Check(excs)) {
-        PyErr_Format(PyExc_TypeError, "excs not a list");
-        return NULL;
-    }
-
-    // TODO: special case where excs has size 1?
-    PyTracebackObject *result = (PyTracebackObject *)tb_create_raw(self->tb_next, self->tb_frame, self->tb_lasti, self->tb_lineno);
-    if (!result) {
-        PyErr_Format(PyExc_ValueError, "failed to create new traceback obj");
-        return NULL;
-    }
-
-    Py_ssize_t len = PyList_Size(excs);
-    for (Py_ssize_t i = 0; i < len; i++) {
-        PyObject *e = PyList_GET_ITEM(excs, i);
-        if (!e) {
-            return NULL;
-        }
-        PyObject *tb = PyDict_GetItem(self->tb_next_map, e);
-        if (!tb) {
-            PyErr_Format(PyExc_ValueError, "splitting on a non-existing exception");
-            return NULL;
-        }
-        // remove e from self and add it to result
-        if (tb_next_map_add_impl(result, e, (PyTracebackObject *)tb) != 0) {
-            PyErr_Format(PyExc_TypeError, "failed to add exception to new traceback");
-            return NULL;
-        }
-        if (PyDict_DelItem(self->tb_next_map, e) != 0) {
-            PyErr_Format(PyExc_TypeError, "failed to remove item in split");
-            return NULL;
-        }
-    }
-    return result;
-}
 
 static PyMethodDef tb_methods[] = {
    {"__dir__", (PyCFunction)tb_dir, METH_NOARGS},
-   {"next_map_add", (PyCFunction)tb_next_map_add, METH_VARARGS},
-   {"group_split", (PyCFunction)tb_group_split, METH_VARARGS},
    {NULL, NULL, 0, NULL},
 };
 
@@ -272,7 +156,6 @@ static PyMemberDef tb_memberlist[] = {
 
 static PyGetSetDef tb_getsetters[] = {
     {"tb_next", (getter)tb_next_get, (setter)tb_next_set, NULL, NULL},
-    {"tb_next_map", (getter)tb_next_map_get, NULL, NULL, NULL},
     {NULL}      /* Sentinel */
 };
 
@@ -283,7 +166,6 @@ tb_dealloc(PyTracebackObject *tb)
     Py_TRASHCAN_BEGIN(tb, tb_dealloc)
     Py_XDECREF(tb->tb_next);
     Py_XDECREF(tb->tb_frame);
-    Py_XDECREF(tb->tb_next_map);
     PyObject_GC_Del(tb);
     Py_TRASHCAN_END
 }
@@ -293,7 +175,6 @@ tb_traverse(PyTracebackObject *tb, visitproc visit, void *arg)
 {
     Py_VISIT(tb->tb_next);
     Py_VISIT(tb->tb_frame);
-    Py_VISIT(tb->tb_next_map);
     return 0;
 }
 
@@ -302,7 +183,6 @@ tb_clear(PyTracebackObject *tb)
 {
     Py_CLEAR(tb->tb_next);
     Py_CLEAR(tb->tb_frame);
-    Py_CLEAR(tb->tb_next_map);
     return 0;
 }
 

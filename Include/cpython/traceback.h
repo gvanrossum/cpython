@@ -8,7 +8,6 @@ typedef struct _traceback {
     PyFrameObject *tb_frame;
     int tb_lasti;
     int tb_lineno;
-	PyObject *tb_next_map;
 } PyTracebackObject;
 
 PyAPI_FUNC(int) _Py_DisplaySourceLine(PyObject *, PyObject *, int, int);

@@ -232,6 +232,7 @@ BaseException_set_tb(PyBaseExceptionObject *self, PyObject *tb, void *Py_UNUSED(
                         "__traceback__ must be a traceback or None");
         return -1;
     }
+
     Py_INCREF(tb);
     Py_XSETREF(self->traceback, tb);
     return 0;
