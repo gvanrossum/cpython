@@ -301,24 +301,29 @@ NoneType = type(None)
 NotImplementedType = type(NotImplemented)
 
 class TracebackGroup:
-    def __init__(self, excs, frame):
-        self.tb_frame = frame
+    def __init__(self, excs):
         self.tb_next_map = {} # TODO: make it a weak key dict
+        self._init_map(excs)
+
+    def _init_map(self, excs):
         for e in excs:
-            self.tb_next_map[e] = e.__traceback__
+            if isinstance(e, ExceptionGroup):
+                for e_ in e.excs:
+                    self.tb_next_map[e_] = e_.__traceback__
+            else:
+                self.tb_next_map[e] = e.__traceback__.tb_next
 
 class ExceptionGroup(BaseException):
 
-    def __init__(self, excs, frame=None):
+    def __init__(self, excs):
         self.excs = set(excs)
-        self.frame = frame or sys._getframe()
         # self.__traceback__ is updated as usual, but self.__traceback_group__
         # is the frame where the exception group was created (and it is
         # preserved on splits).  So __traceback_group__ + __traceback__
         # gives us the full path.
         import types
-        self.__traceback__ = types.TracebackType(None, self.frame, 0, 0)
-        self.__traceback_group__ = TracebackGroup(self.excs, self.frame)
+        self.__traceback__ = None # will be set when the traceback group is raised
+        self.__traceback_group__ = TracebackGroup(self.excs)
 
     def split(self, E):
         ''' returns two new ExceptionGroups: match, rest
@@ -348,28 +353,32 @@ class ExceptionGroup(BaseException):
             self.__traceback__, frame, 0, 0)
 
     @staticmethod
+    def _render_simple_tb(exc, tb=None, indent=0):
+        tb = tb or exc.__traceback__
+        while tb and not isinstance(tb, TracebackGroup):
+            print('[0]',' '*indent, tb.tb_frame)
+            tb = tb.tb_next
+
+    @staticmethod
     def render(exc, tb=None, indent=0):
         print(exc)
-        try:
-            tb = tb or exc.__traceback__
-        except Exception as e:
-            import pdb; pdb.set_trace()
-            print(e)
-        while tb:
-            print(' '*indent, tb.tb_frame)
-            if tb.tb_next: # single traceback
-                tb = tb.tb_next
+        ExceptionGroup._render_simple_tb(exc, tb, indent)
+        if isinstance(exc, ExceptionGroup):
+            tbg = exc.__traceback_group__
+            assert isinstance(tbg, TracebackGroup)
+            indent += 4
+            for e, t in tbg.tb_next_map.items():
+                print('---------------------------------------')
+                ExceptionGroup.render(e, t, indent)
+
+    def __iter__(self):
+        ''' iterate over the individual exceptions (flattens the tree) '''
+        for e in self.excs:
+            if isinstance(e, ExceptionGroup):
+                for e_ in e:
+                    yield e_
             else:
-                # if this is an ExceptioGroup, follow
-                # __traceback_group__
-                if isinstance(exc, ExceptionGroup):
-                    tbg = exc.__traceback_group__
-                    assert tbg
-                    indent += 4
-                    for e, t in tbg.tb_next_map.items():
-                        print('---------------------------------------')
-                        ExceptionGroup.render(e, t, indent)
-                tb = None
+                yield e
 
     def __str__(self):
         return f"ExceptionGroup({self.excs})"

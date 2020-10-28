@@ -3,26 +3,36 @@ import traceback
 import types
 
 
-def f(): raise ValueError('bad value: f')
-def f1(): f()
+def f(i=0): raise ValueError(f'bad value: f{i}')
+def f1(): f(1)
 
-def g(): raise ValueError('bad value: g')
-def g1(): g()
+def g(i=0): raise ValueError(f'bad value: g{i}')
+def g1(): g(1)
 
-def h(): raise TypeError('bad type: h')
-def h1(): h()
+def h(i=0): raise TypeError(f'bad type: h{i}')
+def h1(): h(1)
 
 def aggregator():
     excs = set()
-    for c in (f1, g1, h1):
+    for c in (f, g):
         try:
             c()
         except Exception as e:
             excs.add(e)
     raise types.ExceptionGroup(excs)
 
+def aggregator1():
+    excs = set()
+    for c in (f1, g1, aggregator):
+        try:
+            c()
+        except (Exception, types.ExceptionGroup) as e:
+            excs.add(e)
+    eg = types.ExceptionGroup(excs)
+    raise eg
+
 def propagator():
-    aggregator()
+    aggregator1()
 
 def get_exception_group():
     try:
@@ -49,7 +59,7 @@ def main():
     print (">>>>>>>>>>>>>>>>>> get_exception_group <<<<<<<<<<<<<<<<<<<<")
     e = get_exception_group()
     types.ExceptionGroup.render(e)
-
+    return
     print (">>>>>>>>>>>>>>>>>> handle_type_errors <<<<<<<<<<<<<<<<<<<<")
 
     TEs, rest = handle_type_errors()
