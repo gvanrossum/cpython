@@ -141,7 +141,6 @@ tb_next_set(PyTracebackObject *self, PyObject *new_next, void *Py_UNUSED(_))
 }
 
 
-
 static PyMethodDef tb_methods[] = {
    {"__dir__", (PyCFunction)tb_dir, METH_NOARGS},
    {NULL, NULL, 0, NULL},
