@@ -311,11 +311,8 @@ class ExceptionGroup(BaseException):
             self.__traceback__ = types.TracebackType(
                 None, sys._getframe(), 0, 0)
             for e in excs:
-                 self.add_exc(e)
-
-    def add_exc(self, e):
-        self.excs.add(e)
-        self.__traceback__.next_map_add(e, e.__traceback__)
+                self.excs.add(e)
+                self.__traceback__.next_map_add(e, e.__traceback__)
 
     def split(self, E):
         ''' remove the exceptions that match E
