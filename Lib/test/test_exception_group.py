@@ -1,21 +1,26 @@
 
 import unittest
+import collections.abc
 from exception_group import ExceptionGroup, TracebackGroup
 
 
 class ExceptionGroupTestBase(unittest.TestCase):
-    def assertExceptionsMatch(self, excs1, excs2):
-        """ Assert that two exception lists match in type and arg """
-        self.assertEqual(len(excs1), len(excs2))
-        self.assertSequenceEqual(sorted(str(type(e)) for e in excs1),
-                                 sorted(str(type(e)) for e in excs2))
-        self.assertSequenceEqual(sorted(str(e.args[0]) for e in excs1),
-                                 sorted(str(e.args[0]) for e in excs2))
 
+    def assertExceptionMatchesTemplate(self, exc, template):
+        """ Assert that the exception matches the template """
+        if isinstance(exc, ExceptionGroup):
+            self.assertIsInstance(template, collections.abc.Sequence)
+            self.assertEqual(len(exc.excs), len(template))
+            for e, t in zip(exc.excs, template):
+              self.assertExceptionMatchesTemplate(e, t)
+        else:
+            self.assertIsInstance(template, BaseException)
+            self.assertEqual(type(exc), type(template))
+            self.assertEqual(exc.args, template.args)
 
 class ExceptionGroupTestUtils(ExceptionGroupTestBase):
     def raiseValueError(self, v):
-        raise ValueError(str(v))
+        raise ValueError(v)
 
     def raiseTypeError(self, t):
         raise TypeError(t)
@@ -85,8 +90,8 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             self.assertFalse(True, 'exception not raised')
         except ExceptionGroup as eg:
             # check eg.excs
-            self.assertIsInstance(eg.excs, set)
-            self.assertExceptionsMatch(eg.excs, self.get_test_exceptions_list(0))
+            self.assertIsInstance(eg.excs, collections.abc.Sequence)
+            self.assertExceptionMatchesTemplate(eg, self.get_test_exceptions_list(0))
 
             # check iteration
             self.assertEqual(list(eg), list(eg.excs))
@@ -98,7 +103,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             # check eg.__traceback_group__
             tbg = eg.__traceback_group__
             self.assertEqual(len(tbg.tb_next_map), 5)
-            self.assertEqual(tbg.tb_next_map.keys(), eg.excs)
+            self.assertEqual(tbg.tb_next_map.keys(), set(eg.excs))
             for e, tb in tbg.tb_next_map.items():
                 self.assertEqual(self.funcnames(tb), ['raise'+type(e).__name__])
 
@@ -113,7 +118,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             self.assertFalse(True, 'exception not raised')
         except ExceptionGroup as eg:
             # check eg.excs
-            self.assertIsInstance(eg.excs, set)
+            self.assertIsInstance(eg.excs, collections.abc.Sequence)
             self.assertEqual(len(eg.excs), 3)
 
             # each of eg.excs is an EG with 3xValueError and 2xTypeErrors
@@ -127,10 +132,10 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
                 all_excs.extend(e.excs)
 
             expected_excs = []
-            expected_excs.extend(self.get_test_exceptions_list(1))
-            expected_excs.extend(self.get_test_exceptions_list(2))
-            expected_excs.extend(self.get_test_exceptions_list(3))
-            self.assertExceptionsMatch(all_excs, expected_excs)
+            expected_excs.append(self.get_test_exceptions_list(1))
+            expected_excs.append(self.get_test_exceptions_list(2))
+            expected_excs.append(self.get_test_exceptions_list(3))
+            self.assertExceptionMatchesTemplate(eg, expected_excs)
 
             # check iteration
             self.assertEqual(list(eg), all_excs)
@@ -148,12 +153,46 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             for e, tb in tbg.tb_next_map.items():
                 self.assertEqual(self.funcnames(tb),
                     ['simple_exception_group', 'raise'+type(e).__name__])
-
         else:
             self.assertFalse(True, 'exception not caught')
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
-    pass # TODO
+    def test_split_simple(self):
+        try:
+            self.simple_exception_group(5)
+            self.assertFalse(True, 'exception not raised')
+        except ExceptionGroup as eg:
+            syntaxError, ref = eg.split(SyntaxError)
+            # TODO: check everything
+            valueError, ref = eg.split(ValueError)
+            # TODO: check everything
+            typeError, ref = eg.split(TypeError)
+            # TODO: check everything
+            valueError, ref = eg.split((ValueError, SyntaxError))
+            # TODO: check everything
+            valueError, ref = eg.split((ValueError, TypeError))
+            # TODO: check everything
+        else:
+            self.assertFalse(True, 'exception not caught')
+
+    def test_split_nested(self):
+        try:
+            self.nested_exception_group()
+            self.assertFalse(True, 'exception not raised')
+        except ExceptionGroup as eg:
+            syntaxError, ref = eg.split(SyntaxError)
+            # TODO: check everything
+            valueError, ref = eg.split(ValueError)
+            # TODO: check everything
+            typeError, ref = eg.split(TypeError)
+            # TODO: check everything
+            valueError, ref = eg.split((ValueError, SyntaxError))
+            # TODO: check everything
+            valueError, ref = eg.split((ValueError, TypeError))
+            # TODO: check everything
+        else:
+            self.assertFalse(True, 'exception not caught')
+
 
 class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
     pass # TODO - write the catch context manager and add tests

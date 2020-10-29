@@ -19,11 +19,10 @@ class TracebackGroup:
 class ExceptionGroup(BaseException):
 
     def __init__(self, excs, tb=None):
-        self.excs = set(excs)
+        self.excs = excs
         # self.__traceback__ is updated as usual, but self.__traceback_group__
-        # is set when the exception group is created (and it is preserved on 
-        # splits).  So __traceback_group__ + __traceback__
-        # gives us the full path.
+        # is set when the exception group is created.
+        # __traceback_group__ and __traceback__ combine to give the full path.
         self.__traceback__ = tb
         self.__traceback_group__ = TracebackGroup(self.excs)
 
