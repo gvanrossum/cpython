@@ -104,7 +104,8 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             tbg = eg.__traceback_group__
             self.assertEqual(len(tbg.tb_next_map), 5)
             self.assertEqual(tbg.tb_next_map.keys(), set(eg.excs))
-            for e, tb in tbg.tb_next_map.items():
+            for e in eg.excs:
+                tb = tbg.tb_next_map[e]
                 self.assertEqual(self.funcnames(tb), ['raise'+type(e).__name__])
 
         else:
@@ -131,47 +132,103 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
                 self.assertEqual(etypes.count(TypeError), 2)
                 all_excs.extend(e.excs)
 
-            expected_excs = []
-            expected_excs.append(self.get_test_exceptions_list(1))
-            expected_excs.append(self.get_test_exceptions_list(2))
-            expected_excs.append(self.get_test_exceptions_list(3))
+            expected_excs = [self.get_test_exceptions_list(i) for i in [1,2,3]]
             self.assertExceptionMatchesTemplate(eg, expected_excs)
 
             # check iteration
             self.assertEqual(list(eg), all_excs)
 
             # check eg.__traceback__
-            tb = eg.__traceback__
-            self.assertEqual(self.funcnames(tb),
+            self.assertEqual(self.funcnames(eg.__traceback__),
                 ['test_construction_nested', 'nested_exception_group'])
 
             # check eg.__traceback_group__
             tbg = eg.__traceback_group__
             self.assertEqual(len(tbg.tb_next_map), 15)
-
             self.assertEqual(list(tbg.tb_next_map.keys()), all_excs)
-            for e, tb in tbg.tb_next_map.items():
+            for e in all_excs:
+                tb = tbg.tb_next_map[e]
                 self.assertEqual(self.funcnames(tb),
                     ['simple_exception_group', 'raise'+type(e).__name__])
         else:
             self.assertFalse(True, 'exception not caught')
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
+    def _check_traceback_group_after_split(self, source_eg, eg):
+        tb_next_map = eg.__traceback_group__.tb_next_map
+        source_tb_next_map = source_eg.__traceback_group__.tb_next_map
+        for e in eg:
+            self.assertEqual(self.funcnames(tb_next_map[e]),
+                             self.funcnames(source_tb_next_map[e]))
+        self.assertEqual(len(tb_next_map), len(list(eg)))
+
+    def _split_exception_group(self, eg, types):
+        """ Split an EG and do some sanity checks on the result """
+        self.assertIsInstance(eg, ExceptionGroup)
+        fnames = self.funcnames(eg.__traceback__)
+        all_excs = list(eg)
+
+        match, rest = eg.split(types)
+
+        self.assertIsInstance(match, ExceptionGroup)
+        self.assertIsInstance(rest, ExceptionGroup)
+
+        self.assertEqual(len(all_excs), len(list(eg)))
+        self.assertEqual(len(all_excs), len(list(match)) + len(list(rest)))
+        for e in all_excs:
+            self.assertIn(e, eg)
+            # every exception in all_excs is in eg and
+            # in exactly one of match and rest
+            self.assertNotEqual(e in match, e in rest)
+
+        for e in match:
+            self.assertIsInstance(e, types)
+        for e in rest:
+            self.assertNotIsInstance(e, types)
+
+        # traceback was copied over
+        self.assertEqual(self.funcnames(match.__traceback__), fnames)
+        self.assertEqual(self.funcnames(rest.__traceback__), fnames)
+
+        self._check_traceback_group_after_split(eg, match)
+        self._check_traceback_group_after_split(eg, rest)
+        return match, rest
+
     def test_split_simple(self):
         try:
             self.simple_exception_group(5)
             self.assertFalse(True, 'exception not raised')
         except ExceptionGroup as eg:
-            syntaxError, ref = eg.split(SyntaxError)
-            # TODO: check everything
-            valueError, ref = eg.split(ValueError)
-            # TODO: check everything
-            typeError, ref = eg.split(TypeError)
-            # TODO: check everything
-            valueError, ref = eg.split((ValueError, SyntaxError))
-            # TODO: check everything
-            valueError, ref = eg.split((ValueError, TypeError))
-            # TODO: check everything
+            fnames = ['test_split_simple', 'simple_exception_group']
+            self.assertEqual(self.funcnames(eg.__traceback__), fnames)
+
+            allExceptions = self.get_test_exceptions_list(5)
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+
+            match, rest = self._split_exception_group(eg, SyntaxError)
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            self.assertExceptionMatchesTemplate(match, [])
+            self.assertExceptionMatchesTemplate(rest, allExceptions)
+
+            match, rest = self._split_exception_group(eg, ValueError)
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            self.assertExceptionMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
+            self.assertExceptionMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
+
+            match, rest = self._split_exception_group(eg, TypeError)
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            self.assertExceptionMatchesTemplate(match, [TypeError(t) for t in ['int', 'list']])
+            self.assertExceptionMatchesTemplate(rest, [ValueError(i) for i in [6,7,8]])
+
+            match, rest = self._split_exception_group(eg, (ValueError, SyntaxError))
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            self.assertExceptionMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
+            self.assertExceptionMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
+
+            match, rest = self._split_exception_group(eg, (ValueError, TypeError))
+            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            self.assertExceptionMatchesTemplate(match, allExceptions)
+            self.assertExceptionMatchesTemplate(rest, [])
         else:
             self.assertFalse(True, 'exception not caught')
 
@@ -180,15 +237,18 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
             self.nested_exception_group()
             self.assertFalse(True, 'exception not raised')
         except ExceptionGroup as eg:
-            syntaxError, ref = eg.split(SyntaxError)
+            self.assertEqual(self.funcnames(eg.__traceback__),
+                ['test_split_nested', 'nested_exception_group'])
+
+            syntaxErrors, rest = eg.split(SyntaxError)
             # TODO: check everything
-            valueError, ref = eg.split(ValueError)
+            valueErrors, rest = eg.split(ValueError)
             # TODO: check everything
-            typeError, ref = eg.split(TypeError)
+            typeErrors, rest = eg.split(TypeError)
             # TODO: check everything
-            valueError, ref = eg.split((ValueError, SyntaxError))
+            valueErrors, rest = eg.split((ValueError, SyntaxError))
             # TODO: check everything
-            valueError, ref = eg.split((ValueError, TypeError))
+            valueErrors, rest = eg.split((ValueError, TypeError))
             # TODO: check everything
         else:
             self.assertFalse(True, 'exception not caught')

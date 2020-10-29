@@ -6,9 +6,6 @@ class TracebackGroup:
         # TODO: Oy, this needs to be a weak key dict, but exceptions
         # are not weakreffable.
         self.tb_next_map = {}
-        self._init_map(excs)
-
-    def _init_map(self, excs):
         for e in excs:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
