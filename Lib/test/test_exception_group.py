@@ -6,13 +6,13 @@ from exception_group import ExceptionGroup, TracebackGroup
 
 class ExceptionGroupTestBase(unittest.TestCase):
 
-    def assertExceptionMatchesTemplate(self, exc, template):
+    def assertMatchesTemplate(self, exc, template):
         """ Assert that the exception matches the template """
         if isinstance(exc, ExceptionGroup):
             self.assertIsInstance(template, collections.abc.Sequence)
             self.assertEqual(len(exc.excs), len(template))
             for e, t in zip(exc.excs, template):
-              self.assertExceptionMatchesTemplate(e, t)
+              self.assertMatchesTemplate(e, t)
         else:
             self.assertIsInstance(template, BaseException)
             self.assertEqual(type(exc), type(template))
@@ -64,7 +64,22 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
             tb = tb.tb_next
         return names
 
-    def test_utility_functions(self):
+    def _reduce(self, template, types):
+        """ reduce a nested list of types to certain types
+
+        The result is a nested list of the same shape as template,
+        but with only exceptions that match types
+        """
+        if isinstance(template, collections.abc.Sequence):
+            res = [self._reduce(t, types) for t in template]
+            return [x for x in res if x is not None]
+        elif isinstance(template, types):
+            return template
+        else:
+            return None
+
+class ExceptionGroupTestUtilsTests(ExceptionGroupTestUtils):
+    def test_basic_utility_functions(self):
         self.assertRaises(ValueError, self.raiseValueError, 42)
         self.assertRaises(TypeError, self.raiseTypeError, float)
         self.assertRaises(ExceptionGroup, self.simple_exception_group, 42)
@@ -80,6 +95,22 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
         self.assertSequenceEqual(expected,
             sorted((type(e).__name__, e.args[0]) for e in test_excs))
 
+    def test_reduce(self):
+        te = TypeError('int')
+        se = SyntaxError('blah')
+        ve1 = ValueError(1)
+        ve2 = ValueError(2)
+        template = [[te, ve1], se, [ve2]]
+        reduce = self._reduce
+        self.assertEqual(reduce(template, ()), [[],[]])
+        self.assertEqual(reduce(template, TypeError), [[te],[]])
+        self.assertEqual(reduce(template, ValueError), [[ve1],[ve2]])
+        self.assertEqual(reduce(template, SyntaxError), [[], se, []])
+        self.assertEqual(
+            reduce(template, (TypeError, ValueError)), [[te, ve1], [ve2]])
+        self.assertEqual(
+            reduce(template, (TypeError, SyntaxError)), [[te], se, []])
+
 class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 
     def test_construction_simple(self):
@@ -91,7 +122,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         except ExceptionGroup as eg:
             # check eg.excs
             self.assertIsInstance(eg.excs, collections.abc.Sequence)
-            self.assertExceptionMatchesTemplate(eg, self.get_test_exceptions_list(0))
+            self.assertMatchesTemplate(eg, self.get_test_exceptions_list(0))
 
             # check iteration
             self.assertEqual(list(eg), list(eg.excs))
@@ -132,8 +163,8 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
                 self.assertEqual(etypes.count(TypeError), 2)
                 all_excs.extend(e.excs)
 
-            expected_excs = [self.get_test_exceptions_list(i) for i in [1,2,3]]
-            self.assertExceptionMatchesTemplate(eg, expected_excs)
+            eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+            self.assertMatchesTemplate(eg, eg_template)
 
             # check iteration
             self.assertEqual(list(eg), all_excs)
@@ -202,33 +233,33 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
             fnames = ['test_split_simple', 'simple_exception_group']
             self.assertEqual(self.funcnames(eg.__traceback__), fnames)
 
-            allExceptions = self.get_test_exceptions_list(5)
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
+            eg_template = self.get_test_exceptions_list(5)
+            self.assertMatchesTemplate(eg, eg_template)
 
             match, rest = self._split_exception_group(eg, SyntaxError)
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
-            self.assertExceptionMatchesTemplate(match, [])
-            self.assertExceptionMatchesTemplate(rest, allExceptions)
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, [])
+            self.assertMatchesTemplate(rest, eg_template)
 
             match, rest = self._split_exception_group(eg, ValueError)
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
-            self.assertExceptionMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
-            self.assertExceptionMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
+            self.assertMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
 
             match, rest = self._split_exception_group(eg, TypeError)
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
-            self.assertExceptionMatchesTemplate(match, [TypeError(t) for t in ['int', 'list']])
-            self.assertExceptionMatchesTemplate(rest, [ValueError(i) for i in [6,7,8]])
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, [TypeError(t) for t in ['int', 'list']])
+            self.assertMatchesTemplate(rest, [ValueError(i) for i in [6,7,8]])
 
             match, rest = self._split_exception_group(eg, (ValueError, SyntaxError))
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
-            self.assertExceptionMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
-            self.assertExceptionMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, [ValueError(i) for i in [6,7,8]])
+            self.assertMatchesTemplate(rest, [TypeError(t) for t in ['int', 'list']])
 
             match, rest = self._split_exception_group(eg, (ValueError, TypeError))
-            self.assertExceptionMatchesTemplate(eg, allExceptions)
-            self.assertExceptionMatchesTemplate(match, allExceptions)
-            self.assertExceptionMatchesTemplate(rest, [])
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, eg_template)
+            self.assertMatchesTemplate(rest, [])
         else:
             self.assertFalse(True, 'exception not caught')
 
@@ -237,19 +268,36 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
             self.nested_exception_group()
             self.assertFalse(True, 'exception not raised')
         except ExceptionGroup as eg:
-            self.assertEqual(self.funcnames(eg.__traceback__),
-                ['test_split_nested', 'nested_exception_group'])
+            fnames = ['test_split_nested', 'nested_exception_group']
+            self.assertEqual(self.funcnames(eg.__traceback__), fnames)
 
-            syntaxErrors, rest = eg.split(SyntaxError)
-            # TODO: check everything
-            valueErrors, rest = eg.split(ValueError)
-            # TODO: check everything
-            typeErrors, rest = eg.split(TypeError)
-            # TODO: check everything
-            valueErrors, rest = eg.split((ValueError, SyntaxError))
-            # TODO: check everything
-            valueErrors, rest = eg.split((ValueError, TypeError))
-            # TODO: check everything
+            eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+            self.assertMatchesTemplate(eg, eg_template)
+
+            match, rest = self._split_exception_group(eg, SyntaxError)
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, [[],[],[]])
+            self.assertMatchesTemplate(rest, eg_template)
+
+            match, rest = self._split_exception_group(eg, ValueError)
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, self._reduce(eg_template, ValueError))
+            self.assertMatchesTemplate(rest, self._reduce(eg_template, TypeError))
+
+            match, rest = self._split_exception_group(eg, TypeError)
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, self._reduce(eg_template, TypeError))
+            self.assertMatchesTemplate(rest, self._reduce(eg_template, ValueError))
+
+            match, rest = self._split_exception_group(eg, (ValueError, SyntaxError))
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, self._reduce(eg_template, ValueError))
+            self.assertMatchesTemplate(rest, self._reduce(eg_template, TypeError))
+
+            match, rest = self._split_exception_group(eg, (ValueError, TypeError))
+            self.assertMatchesTemplate(eg, eg_template)
+            self.assertMatchesTemplate(match, eg_template)
+            self.assertMatchesTemplate(rest, [[],[],[]])
         else:
             self.assertFalse(True, 'exception not caught')
 
