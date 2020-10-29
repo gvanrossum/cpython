@@ -13,7 +13,10 @@ class TracebackGroup:
                 for e_ in e.excs:
                     self.tb_next_map[e_] = e_.__traceback__
             else:
-                self.tb_next_map[e] = e.__traceback__.tb_next
+                if e.__traceback__:
+                    self.tb_next_map[e] = e.__traceback__.tb_next
+                else:
+                    self.tb_next_map[e] = None
 
 class ExceptionGroup(BaseException):
 
