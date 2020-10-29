@@ -56,6 +56,37 @@ class ExceptionGroup(BaseException):
         self.__traceback__ = types.TracebackType(
             self.__traceback__, frame, 0, 0)
 
+    def extract_traceback(self, exc):
+        """ returns the traceback of a single exception
+
+        If exc is in this exception group, return its
+        traceback as a list of frames. Otherwise, return None.
+
+        Note: The frame where an exception was caught and
+        rereaised as part of an exception group appreas twice.
+        """
+        if exc not in self:
+            return None
+        result = []
+        tb = self.__traceback__
+        while tb:
+            result.append(tb.tb_frame)
+            tb = tb.tb_next
+        next_e = None
+        for e in self.excs:
+            if exc == e or (isinstance(e, ExceptionGroup) and exc in e):
+                assert next_e is None
+                next_e = e
+        assert next_e is not None
+        if isinstance(next_e, ExceptionGroup):
+            result.extend(next_e.extract_traceback(exc))
+        else:
+            tb = next_e.__traceback__
+            while tb:
+                result.append(tb.tb_frame)
+                tb = tb.tb_next
+        return result
+
     @staticmethod
     def render(exc, tb=None, indent=0):
         print(exc)

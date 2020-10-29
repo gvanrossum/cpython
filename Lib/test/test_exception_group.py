@@ -55,12 +55,15 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
                 excs.append(e)
         raise ExceptionGroup(excs)
 
+    def funcname(self, tb_frame):
+        return tb_frame.f_code.co_name
+
     def funcnames(self, tb):
         """ Extract function names from a traceback """
-        funcname = lambda tb_frame: tb_frame.f_code.co_name
+
         names = []
         while tb:
-            names.append(funcname(tb.tb_frame))
+            names.append(self.funcname(tb.tb_frame))
             tb = tb.tb_next
         return names
 
@@ -128,17 +131,16 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         # check iteration
         self.assertEqual(list(eg), list(eg.excs))
 
-        # check eg.__traceback__
-        self.assertEqual(self.funcnames(eg.__traceback__),
-            ['test_construction_simple', 'simple_exception_group'])
-
-        # check eg.__traceback_group__
-        tbg = eg.__traceback_group__
-        self.assertEqual(len(tbg.tb_next_map), 5)
-        self.assertEqual(tbg.tb_next_map.keys(), set(eg.excs))
-        for e in eg.excs:
-            tb = tbg.tb_next_map[e]
-            self.assertEqual(self.funcnames(tb), ['raise'+type(e).__name__])
+        # check tracebacks
+        for e in eg:
+            expected = [
+                'test_construction_simple',
+                'simple_exception_group',
+                'simple_exception_group',
+                'raise'+type(e).__name__,
+            ]
+            etb = eg.extract_traceback(e)
+            self.assertEqual(expected, [self.funcname(f) for f in etb])
 
     def test_construction_nested(self):
         # create a nested exception group and check that
@@ -168,27 +170,20 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         # check iteration
         self.assertEqual(list(eg), all_excs)
 
-        # check eg.__traceback__
-        self.assertEqual(self.funcnames(eg.__traceback__),
-            ['test_construction_nested', 'nested_exception_group'])
-
-        # check eg.__traceback_group__
-        tbg = eg.__traceback_group__
-        self.assertEqual(len(tbg.tb_next_map), 15)
-        self.assertEqual(list(tbg.tb_next_map.keys()), all_excs)
-        for e in all_excs:
-            tb = tbg.tb_next_map[e]
-            self.assertEqual(self.funcnames(tb),
-                ['simple_exception_group', 'raise'+type(e).__name__])
+        # check tracebacks
+        for e in eg:
+            expected = [
+                'test_construction_nested',
+                'nested_exception_group',
+                'nested_exception_group',
+                'simple_exception_group',
+                'simple_exception_group',
+                'raise'+type(e).__name__,
+            ]
+            etb = eg.extract_traceback(e)
+            self.assertEqual(expected, [self.funcname(f) for f in etb])
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
-    def _check_traceback_group_after_split(self, source_eg, eg):
-        tb_next_map = eg.__traceback_group__.tb_next_map
-        source_tb_next_map = source_eg.__traceback_group__.tb_next_map
-        for e in eg:
-            self.assertEqual(self.funcnames(tb_next_map[e]),
-                             self.funcnames(source_tb_next_map[e]))
-        self.assertEqual(len(tb_next_map), len(eg))
 
     def _split_exception_group(self, eg, types):
         """ Split an EG and do some sanity checks on the result """
@@ -214,12 +209,13 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         for e in rest:
             self.assertNotIsInstance(e, types)
 
-        # traceback was copied over
-        self.assertEqual(self.funcnames(match.__traceback__), fnames)
-        self.assertEqual(self.funcnames(rest.__traceback__), fnames)
+        # check tracebacks
+        for part in [match, rest]:
+            for e in part:
+                self.assertEqual(
+                    eg.extract_traceback(e),
+                    part.extract_traceback(e))
 
-        self._check_traceback_group_after_split(eg, match)
-        self._check_traceback_group_after_split(eg, rest)
         return match, rest
 
     def test_split_simple(self):
