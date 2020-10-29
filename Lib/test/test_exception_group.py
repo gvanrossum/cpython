@@ -392,5 +392,59 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         checkMatch(raised, self._reduce(eg_template, TypeError))
         checkMatch(caught, self._reduce(eg_template, ValueError))
 
+    def test_catch_nested_eg_raising_handler(self):
+        checkMatch =self.assertMatchesTemplate
+
+        eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+        raised_template = [ValueError('foo'), 
+                           [SyntaxError('bar'), ValueError('baz')]
+                          ]
+
+        def handler(eg):
+            nonlocal caught
+            caught = eg
+            return ExceptionGroup(
+                       [ValueError('foo'),
+                        ExceptionGroup(
+                            [SyntaxError('bar'), ValueError('baz')])])
+
+        try: ######### Catch nothing:
+            caught = raised = None
+            with ExceptionGroup.catch(SyntaxError, handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        checkMatch(raised, eg_template)
+        self.assertIsNone(caught)
+
+        try: ######### Catch everything:
+            caught = None
+            with ExceptionGroup.catch((ValueError, TypeError), handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        checkMatch(raised, raised_template)
+        checkMatch(caught, eg_template)
+
+        try: ######### Catch something:
+            caught = raised = None
+            with ExceptionGroup.catch(TypeError, handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        checkMatch(raised,
+                   self._reduce(eg_template, ValueError)  + raised_template)
+        checkMatch(caught, self._reduce(eg_template, TypeError))
+
+        try: ######### Catch something:
+            caught = raised = None
+            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        checkMatch(raised,
+                   self._reduce(eg_template, TypeError) + raised_template)
+        checkMatch(caught, self._reduce(eg_template, ValueError))
+
 if __name__ == '__main__':
     unittest.main()
