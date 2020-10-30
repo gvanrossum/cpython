@@ -7,6 +7,7 @@ class TracebackGroup:
         # TODO: Oy, this needs to be a weak key dict, but exceptions
         # are not weakreffable.
         # TODO: what if e is unhashable?
+        # TODO: Why don't we make this a list corresponding to excs?
         self.tb_next_map = {}
         for e in excs:
             if isinstance(e, ExceptionGroup):
@@ -21,6 +22,12 @@ class TracebackGroup:
 class ExceptionGroup(BaseException):
 
     def __init__(self, excs, *, tb=None):
+        """ Construct a new ExceptionGroup
+
+        excs: sequence of exceptions
+        tb [optional]: the __traceback__ of this exception group.
+        Typically set when this ExceptionGroup is derived from another.
+        """
         self.excs = excs
         # self.__traceback__ is updated as usual, but self.__traceback_group__
         # is set when the exception group is created.
@@ -28,11 +35,20 @@ class ExceptionGroup(BaseException):
         self.__traceback__ = tb
         self.__traceback_group__ = TracebackGroup(self.excs)
 
-    def _split_on_condition(self, condition):
+    def project(self, condition):
+        """ Split an ExceptionGroup based on an exception predicate
+
+        returns two new ExceptionGroups: match, rest of the exceptions
+        of self for which condition(e) returns True and False, respectively.
+        match and rest have the same nested structure as self, but empty
+        sub-exceptions are not included.
+
+        condition: BaseException --> Boolean
+        """
         match, rest = [], []
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
-                e_match, e_rest = e._split_on_condition(condition)
+                e_match, e_rest = e.project(condition)
                 if e_match:
                     match.append(e_match)
                 if e_rest:
@@ -46,23 +62,19 @@ class ExceptionGroup(BaseException):
         return (ExceptionGroup(match, tb=self.__traceback__),
                 ExceptionGroup(rest, tb=self.__traceback__))
 
-    def split(self, E):
-        """ Split an ExceptionGroup to extract exceptions matching E
+    def split(self, type):
+        """ Split an ExceptionGroup to extract exceptions of type E
 
-        returns two new ExceptionGroups: match, rest of the exceptions of
-        self that match E and those that don't.
-        match and rest have the same nested structure as self.
-        E can be a type or tuple of types.
+        type: An exception type
         """
-        return self._split_on_condition(lambda e: isinstance(e, E))
+        return self.project(lambda e: isinstance(e, type))
 
     def subgroup(self, keep):
-        """ Return a subgroup of self including only the exception in keep
+        """ Split an ExceptionGroup to extract only exceptions in keep
 
-        returns a new ExceptionGroups that contains only the exception in
-        the sequence keep and preserves the internal structure of self.
+        keep: List[BaseException]
         """
-        match, _ = self._split_on_condition(lambda e: e in keep)
+        match, _ = self.project(lambda e: e in keep)
         return match
 
     def push_frame(self, frame):
@@ -103,18 +115,22 @@ class ExceptionGroup(BaseException):
 
     @staticmethod
     def render(exc, tb=None, indent=0):
-        print(exc)
+        output = []
+        output.append(f"{exc}")
         tb = tb or exc.__traceback__
         while tb and not isinstance(tb, TracebackGroup):
-            print(' '*indent, tb.tb_frame)
+            output.append(f"{' '*indent} {tb.tb_frame}")
             tb = tb.tb_next
         if isinstance(exc, ExceptionGroup):
             tbg = exc.__traceback_group__
             assert isinstance(tbg, TracebackGroup)
             indent += 4
             for e, t in tbg.tb_next_map.items():
-                print('---------------------------------------')
-                ExceptionGroup.render(e, t, indent)
+                output.append('---------------------------------------')
+                output.extend(ExceptionGroup.render(e, t, indent))
+        for l in output:
+            print(l)
+        return output
 
     def __iter__(self):
         ''' iterate over the individual exceptions (flattens the tree) '''
