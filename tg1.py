@@ -1,5 +1,5 @@
 import asyncio
-import types
+import exception_group
 
 async def t1():
     await asyncio.sleep(0.5)
@@ -27,9 +27,9 @@ async def main():
 def run(*args):
     try:
         asyncio.run(*args)
-    except types.ExceptionGroup as e:
+    except exception_group.ExceptionGroup as e:
         print('============')
-        types.ExceptionGroup.render(e)
+        exception_group.ExceptionGroup.render(e)
         print('^^^^^^^^^^^^')
         raise
 

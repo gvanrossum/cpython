@@ -23,7 +23,7 @@ import asyncio
 import functools
 import itertools
 import sys
-import types
+import exception_group
 
 __all__ = ('TaskGroup',)
 
@@ -165,7 +165,7 @@ class TaskGroup:
             errors = self._errors
             self._errors = None
 
-            raise types.ExceptionGroup(errors)
+            raise exception_group.ExceptionGroup(errors)
 
     def create_task(self, coro):
         if not self._entered:
