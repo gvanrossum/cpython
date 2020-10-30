@@ -18,6 +18,12 @@ class ExceptionGroupTestBase(unittest.TestCase):
             self.assertEqual(type(exc), type(template))
             self.assertEqual(exc.args, template.args)
 
+    def to_template(self, exc):
+        if isinstance(exc, ExceptionGroup):
+            return [self.to_template(e) for e in exc.excs]
+        else:
+            return exc
+
 class ExceptionGroupTestUtils(ExceptionGroupTestBase):
     def raiseValueError(self, v):
         raise ValueError(v)
@@ -33,9 +39,6 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
             (self.raiseValueError, ValueError, x+3),
             (self.raiseTypeError, TypeError, 'list'),
         ]
-
-    def get_test_exceptions_list(self, x):
-        return [t(arg) for _, t, arg in self.get_test_exceptions(x)]
 
     def simple_exception_group(self, x):
         excs = []
@@ -60,7 +63,6 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
 
     def funcnames(self, tb):
         """ Extract function names from a traceback """
-
         names = []
         while tb:
             names.append(self.funcname(tb.tb_frame))
@@ -88,15 +90,43 @@ class ExceptionGroupTestUtilsTests(ExceptionGroupTestUtils):
         self.assertRaises(ExceptionGroup, self.simple_exception_group, 42)
         self.assertRaises(ExceptionGroup, self.nested_exception_group)
 
-        test_excs = self.get_test_exceptions_list(42)
-        self.assertEqual(len(test_excs), 5)
-        expected = [("TypeError", 'int'),
-                    ("TypeError", 'list'),
-                    ("ValueError", 43),
-                    ("ValueError", 44),
-                    ("ValueError", 45)]
-        self.assertSequenceEqual(expected,
-            sorted((type(e).__name__, e.args[0]) for e in test_excs))
+        try:
+            self.simple_exception_group(42)
+        except ExceptionGroup as eg:
+            template = self.to_template(eg)
+            self.assertEqual(len(template), 5)
+            expected = [ValueError(43),
+                        TypeError('int'),
+                        ValueError(44),
+                        ValueError(45),
+                        TypeError('list'),
+                       ]
+            self.assertEqual(str(expected), str(template))
+
+        try:
+            self.nested_exception_group()
+        except ExceptionGroup as eg:
+            template = self.to_template(eg)
+            self.assertEqual(len(template), 3)
+            expected = [[ValueError(2),
+                        TypeError('int'),
+                        ValueError(3),
+                        ValueError(4),
+                        TypeError('list'),
+                       ],
+                        [ValueError(3),
+                        TypeError('int'),
+                        ValueError(4),
+                        ValueError(5),
+                        TypeError('list'),
+                       ],
+                        [ValueError(4),
+                        TypeError('int'),
+                        ValueError(5),
+                        ValueError(6),
+                        TypeError('list'),
+                       ]]
+            self.assertEqual(str(expected), str(template))
 
     def test_reduce(self):
         te = TypeError('int')
@@ -126,7 +156,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             eg = e
         # check eg.excs
         self.assertIsInstance(eg.excs, collections.abc.Sequence)
-        self.assertMatchesTemplate(eg, self.get_test_exceptions_list(0))
+        self.assertMatchesTemplate(eg, self.to_template(eg))
 
         # check iteration
         self.assertEqual(list(eg), list(eg.excs))
@@ -164,7 +194,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             self.assertEqual(etypes.count(TypeError), 2)
             all_excs.extend(e.excs)
 
-        eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+        eg_template = self.to_template(eg)
         self.assertMatchesTemplate(eg, eg_template)
 
         # check iteration
@@ -228,7 +258,7 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         fnames = ['test_split_simple', 'simple_exception_group']
         self.assertEqual(self.funcnames(eg.__traceback__), fnames)
 
-        eg_template = self.get_test_exceptions_list(5)
+        eg_template = self.to_template(eg)
         checkMatch(eg, eg_template)
 
         match, rest = self._split_exception_group(eg, SyntaxError)
@@ -266,7 +296,7 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         fnames = ['test_split_nested', 'nested_exception_group']
         self.assertEqual(self.funcnames(eg.__traceback__), fnames)
 
-        eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+        eg_template = self.to_template(eg)
         checkMatch(eg, eg_template)
 
         match, rest = self._split_exception_group(eg, SyntaxError)
@@ -317,7 +347,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             for e in eg:
                 tb = [self.funcname(f) for f in eg.extract_traceback(e)]
                 ref_tbs[(type(e), e.args)] = tb
-        eg_template = self.get_test_exceptions_list(12)
+            eg_template = self.to_template(eg)
 
         def handler(eg):
             nonlocal caught
@@ -365,7 +395,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             for e in eg:
                 tb = [self.funcname(f) for f in eg.extract_traceback(e)]
                 ref_tbs[(type(e), e.args)] = tb
-        eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
+            eg_template = self.to_template(eg)
 
         def handler(eg):
             nonlocal caught
@@ -418,22 +448,19 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             self.nested_exception_group()
         except ExceptionGroup as eg:
             eg1 = eg
+            eg_template = self.to_template(eg)
+
         try:
             raise handler(None)
         except ExceptionGroup as eg:
             eg2 = eg
+            raised_template = self.to_template(eg)
 
         ref_tbs = {}
         for eg in (eg1, eg2):
             for e in eg:
                 tb = [self.funcname(f) for f in eg.extract_traceback(e)]
                 ref_tbs[(type(e), e.args)] = tb
-
-        eg_template = [self.get_test_exceptions_list(i) for i in [1,2,3]]
-
-        raised_template = [ValueError('foo'),
-                           [SyntaxError('bar'), ValueError('baz')]]
-
 
         try: ######### Catch nothing:
             caught = raised = None
