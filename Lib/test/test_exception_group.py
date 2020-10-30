@@ -435,7 +435,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         self.checkMatch(raised, self._reduce(eg_template, TypeError), ref_tbs)
         self.checkMatch(caught, self._reduce(eg_template, ValueError), ref_tbs)
 
-    def test_catch_nested_eg_raising_handler(self):
+    def test_catch_nested_eg_handler_raises_new_exceptions(self):
         def handler(eg):
             nonlocal caught
             caught = eg

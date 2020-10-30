@@ -28,28 +28,40 @@ class ExceptionGroup(BaseException):
         self.__traceback__ = tb
         self.__traceback_group__ = TracebackGroup(self.excs)
 
-    def split(self, E):
-        """Split an ExceptionGroup to extract exceptions matching E
-        
-        returns two new ExceptionGroups: match, rest of the exceptions of 
-        self that match E and those that don't.
-        match and rest have the same nested structure as self.
-        E can be a type or tuple of types.
-        """
+    def _split_on_condition(self, condition):
         match, rest = [], []
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
-                e_match, e_rest = e.split(E)
+                e_match, e_rest = e._split_on_condition(condition)
                 match.append(e_match)
                 rest.append(e_rest)
             else:
-                if isinstance(e, E):
+                if condition(e):
                     match.append(e)
                     e_match, e_rest = e, None
                 else:
                     rest.append(e)
         return (ExceptionGroup(match, tb=self.__traceback__),
                 ExceptionGroup(rest, tb=self.__traceback__))
+
+    def split(self, E):
+        """ Split an ExceptionGroup to extract exceptions matching E
+
+        returns two new ExceptionGroups: match, rest of the exceptions of
+        self that match E and those that don't.
+        match and rest have the same nested structure as self.
+        E can be a type or tuple of types.
+        """
+        return self._split_on_condition(lambda e: isinstance(e, E))
+
+    def subgroup(self, keep):
+        """ Return a subgroup of self including only the exception in keep
+
+        returns a new ExceptionGroups that contains only the exception in
+        the sequence keep and preserves the internal structure of self.
+        """
+        match, _ = self._split_on_condition(lambda e: e in keep)
+        return match
 
     def push_frame(self, frame):
         import types
@@ -148,25 +160,37 @@ class ExceptionGroupCatcher:
 
     def __exit__(self, etype, exc, tb):
         if exc is not None and isinstance(exc, ExceptionGroup):
-            match, rest = exc.split(self.types)
+            match, unmatched = exc.split(self.types)
 
             if not match:
                 # Let the interpreter reraise the exception
                 return False
 
-            new_exception_group = self.handler(match)
-            if not new_exception_group and not rest:
+            handler_excs = self.handler(match)
+            if handler_excs == match:
+                # handler reraised all of the matched exceptions.
+                # reraise exc as is.
+                return False
+
+            if not handler_excs and not unmatched:
                 # handled and swallowed all exceptions
+                # do not raise anything.
                 return True
 
-            if not new_exception_group:
-                to_raise = rest
-            elif not rest:
-                to_raise = new_exception_group
+            if not unmatched:
+                to_raise = handler_excs  # raise what handler returned
+            elif not handler_excs:
+                to_raise = unmatched       # raise the unmatched exceptions
             else:
-                # merge rest and new_exceptions
-                # keep the traceback from rest
-                to_raise = ExceptionGroup([rest, new_exception_group])
+                # to_keep: EG subgroup of exc with only those to reraise
+                # (either not matched or reraised by handler)
+                to_keep = exc.subgroup(
+                    list(unmatched) + [e for e in handler_excs if e in match])
+                # to_add: new exceptions raised by handler
+                to_add = handler_excs.subgroup(
+                    [e for e in handler_excs if e not in match])
+
+                to_raise = ExceptionGroup([to_keep, to_add])
 
             # When we raise to_raise, Python will unconditionally blow
             # away its __context__ attribute and replace it with the original
