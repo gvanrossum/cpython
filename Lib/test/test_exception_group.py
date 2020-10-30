@@ -301,7 +301,7 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
 
         match, rest = self._split_exception_group(eg, SyntaxError)
         checkMatch(eg, eg_template)
-        checkMatch(match, [[],[],[]])
+        checkMatch(match, [])
         checkMatch(rest, eg_template)
 
         match, rest = self._split_exception_group(eg, ValueError)
@@ -322,7 +322,7 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         match, rest = self._split_exception_group(eg, (ValueError, TypeError))
         checkMatch(eg, eg_template)
         checkMatch(match, eg_template)
-        checkMatch(rest, [[],[],[]])
+        checkMatch(rest, [])
 
 class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
     def checkMatch(self, exc, template, reference_tbs):
@@ -501,6 +501,139 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                    [self._reduce(eg_template, TypeError), raised_template],
                    ref_tbs)
         self.checkMatch(caught, self._reduce(eg_template, ValueError), ref_tbs)
+
+    def test_catch_nested_eg_handler_reraise_all_matched(self):
+        def handler(eg):
+            return eg
+
+        try:
+            self.nested_exception_group()
+        except ExceptionGroup as eg:
+            eg1 = eg
+            eg_template = self.to_template(eg)
+
+        ref_tbs = {}
+        for e in eg1:
+            tb = [self.funcname(f) for f in eg1.extract_traceback(e)]
+            ref_tbs[(type(e), e.args)] = tb
+
+        try: ######### Catch TypeErrors:
+            raised = None
+            with ExceptionGroup.catch(TypeError, handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised, eg_template, ref_tbs)
+
+        try: ######### Catch ValueErrors:
+            raised = None
+            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised, eg_template, ref_tbs)
+
+    def test_catch_nested_eg_handler_reraise_new_and_all_old(self):
+        def handler(eg):
+            return ExceptionGroup(
+                       [eg,
+                        ValueError('foo'),
+                        ExceptionGroup(
+                            [SyntaxError('bar'), ValueError('baz')])])
+
+        try:
+            self.nested_exception_group()
+        except ExceptionGroup as eg:
+            eg1 = eg
+            eg_template = self.to_template(eg)
+
+        class DummyException(Exception): pass
+        try:
+            raise handler(DummyException())
+        except ExceptionGroup as eg:
+            _, eg2 = eg.split(DummyException)
+            new_raised_template = self.to_template(eg2)
+
+        ref_tbs = {}
+        for eg in (eg1, eg2):
+            for e in eg:
+                tb = [self.funcname(f) for f in eg.extract_traceback(e)]
+                ref_tbs[(type(e), e.args)] = tb
+
+        try: ######### Catch TypeErrors:
+            raised = None
+            with ExceptionGroup.catch(TypeError, handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised, [eg_template, new_raised_template], ref_tbs)
+
+        try: ######### Catch ValueErrors:
+            raised = None
+            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised, [eg_template, new_raised_template], ref_tbs)
+
+    def test_catch_nested_eg_handler_reraise_new_and_some_old(self):
+        def handler(eg):
+            ret = ExceptionGroup(
+                       [eg.excs[1],
+                        ValueError('foo'),
+                        ExceptionGroup(
+                            [SyntaxError('bar'), ValueError('baz')])])
+            return ret
+
+        try:
+            self.nested_exception_group()
+        except ExceptionGroup as eg:
+            eg1 = eg
+            eg_template = self.to_template(eg)
+
+        class DummyException(Exception): pass
+        try:
+            eg = ExceptionGroup([DummyException(), DummyException()])
+            raise handler(eg)
+        except ExceptionGroup as eg:
+            _, eg2 = eg.split(DummyException)
+            new_raised_template = self.to_template(eg2)
+
+        ref_tbs = {}
+        for eg in (eg1, eg2):
+            for e in eg:
+                tb = [self.funcname(f) for f in eg.extract_traceback(e)]
+                ref_tbs[(type(e), e.args)] = tb
+
+        try: ######### Catch TypeErrors:
+            raised = None
+            with ExceptionGroup.catch(TypeError, handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised,
+                        [
+                         [ self._reduce(eg_template[0], ValueError),
+                           eg_template[1],
+                           self._reduce(eg_template[2], ValueError),
+                         ],
+                         new_raised_template],
+                        ref_tbs)
+
+        try: ######### Catch ValueErrors:
+            raised = None
+            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
+                self.nested_exception_group()
+        except ExceptionGroup as eg:
+            raised = eg
+        self.checkMatch(raised,
+                        [
+                         [ self._reduce(eg_template[0], TypeError),
+                           eg_template[1],
+                           self._reduce(eg_template[2], TypeError),
+                         ],
+                         new_raised_template],
+                        ref_tbs)
 
 if __name__ == '__main__':
     unittest.main()

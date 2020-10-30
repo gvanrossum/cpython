@@ -20,7 +20,7 @@ class TracebackGroup:
 
 class ExceptionGroup(BaseException):
 
-    def __init__(self, excs, tb=None):
+    def __init__(self, excs, *, tb=None):
         self.excs = excs
         # self.__traceback__ is updated as usual, but self.__traceback_group__
         # is set when the exception group is created.
@@ -33,8 +33,10 @@ class ExceptionGroup(BaseException):
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
                 e_match, e_rest = e._split_on_condition(condition)
-                match.append(e_match)
-                rest.append(e_rest)
+                if e_match:
+                    match.append(e_match)
+                if e_rest:
+                    rest.append(e_rest)
             else:
                 if condition(e):
                     match.append(e)
@@ -149,7 +151,7 @@ class ExceptionGroupCatcher:
         handler: a function that takes an ExceptionGroup of the
         matched type and does something with them
 
-        Any unmatched exceptions are raised at the end as another
+        Any rest exceptions are raised at the end as another
         exception group
         """
         self.types = types
@@ -160,7 +162,7 @@ class ExceptionGroupCatcher:
 
     def __exit__(self, etype, exc, tb):
         if exc is not None and isinstance(exc, ExceptionGroup):
-            match, unmatched = exc.split(self.types)
+            match, rest = exc.split(self.types)
 
             if not match:
                 # Let the interpreter reraise the exception
@@ -172,24 +174,23 @@ class ExceptionGroupCatcher:
                 # reraise exc as is.
                 return False
 
-            if not handler_excs and not unmatched:
+            if not handler_excs and not rest:
                 # handled and swallowed all exceptions
                 # do not raise anything.
                 return True
 
-            if not unmatched:
+            if not rest:
                 to_raise = handler_excs  # raise what handler returned
             elif not handler_excs:
-                to_raise = unmatched       # raise the unmatched exceptions
+                to_raise = rest       # raise the rest exceptions
             else:
                 # to_keep: EG subgroup of exc with only those to reraise
                 # (either not matched or reraised by handler)
                 to_keep = exc.subgroup(
-                    list(unmatched) + [e for e in handler_excs if e in match])
+                    list(rest) + [e for e in handler_excs if e in match])
                 # to_add: new exceptions raised by handler
                 to_add = handler_excs.subgroup(
                     [e for e in handler_excs if e not in match])
-
                 to_raise = ExceptionGroup([to_keep, to_add])
 
             # When we raise to_raise, Python will unconditionally blow
