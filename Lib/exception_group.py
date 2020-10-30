@@ -166,9 +166,7 @@ class ExceptionGroupCatcher:
             else:
                 # merge rest and new_exceptions
                 # keep the traceback from rest
-                to_raise = ExceptionGroup(
-                    rest.excs + new_exception_group.excs,
-                    tb = rest.__traceback__)
+                to_raise = ExceptionGroup([rest, new_exception_group])
 
             # When we raise to_raise, Python will unconditionally blow
             # away its __context__ attribute and replace it with the original
