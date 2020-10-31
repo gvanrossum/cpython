@@ -199,7 +199,10 @@ class ExceptionGroupCatcher:
                 # to_add: new exceptions raised by handler
                 to_add = handler_excs.subgroup(
                     [e for e in handler_excs if e not in match])
-                to_raise = ExceptionGroup([to_keep, to_add])
+                if to_add:
+                    to_raise = ExceptionGroup([to_keep, to_add])
+                else:
+                    to_raise = to_keep
 
             # When we raise to_raise, Python will unconditionally blow
             # away its __context__ attribute and replace it with the original
