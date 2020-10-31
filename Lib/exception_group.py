@@ -4,20 +4,16 @@ import sys
 
 class TracebackGroup:
     def __init__(self, excs):
-        # TODO: Oy, this needs to be a weak key dict, but exceptions
-        # are not weakreffable.
-        # TODO: what if e is unhashable?
-        # TODO: Why don't we make this a list corresponding to excs?
-        self.tb_next_map = {}
+        self.tb_next_map = {} # exception id to tb
         for e in excs:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
-                    self.tb_next_map[e_] = e_.__traceback__
+                    self.tb_next_map[id(e_)] = e_.__traceback__
             else:
                 if e.__traceback__:
-                    self.tb_next_map[e] = e.__traceback__.tb_next
+                    self.tb_next_map[id(e)] = e.__traceback__.tb_next
                 else:
-                    self.tb_next_map[e] = None
+                    self.tb_next_map[id(e)] = None
 
 class ExceptionGroup(BaseException):
 
@@ -117,7 +113,8 @@ class ExceptionGroup(BaseException):
             tbg = exc.__traceback_group__
             assert isinstance(tbg, TracebackGroup)
             indent += 4
-            for e, t in tbg.tb_next_map.items():
+            for e in exc.excs:
+                t = tbg.tb_next_map[id(e)]
                 output.append('---------------------------------------')
                 output.extend(ExceptionGroup.render(e, t, indent))
         for l in output:
