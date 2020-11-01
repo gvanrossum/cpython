@@ -8,16 +8,18 @@ class TracebackGroup:
         for e in excs:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
+                    # TODO: what if e_ is an EG? This looks wrong.
                     self.tb_next_map[id(e_)] = e_.__traceback__
             else:
                 if e.__traceback__:
+                    # TODO: is tb_next always correct? explain why.
                     self.tb_next_map[id(e)] = e.__traceback__.tb_next
                 else:
                     self.tb_next_map[id(e)] = None
 
 class ExceptionGroup(BaseException):
 
-    def __init__(self, excs, *, tb=None):
+    def __init__(self, excs, *, msg=None, tb=None):
         """ Construct a new ExceptionGroup
 
         excs: sequence of exceptions
@@ -25,6 +27,7 @@ class ExceptionGroup(BaseException):
         Typically set when this ExceptionGroup is derived from another.
         """
         self.excs = excs
+        self.msg = msg
         # self.__traceback__ is updated as usual, but self.__traceback_group__
         # is set when the exception group is created.
         # __traceback_group__ and __traceback__ combine to give the full path.
@@ -41,6 +44,7 @@ class ExceptionGroup(BaseException):
 
         condition: BaseException --> Boolean
         """
+        # TODO: add option to not create 'rest'
         match, rest = [], []
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
@@ -52,11 +56,14 @@ class ExceptionGroup(BaseException):
             else:
                 if condition(e):
                     match.append(e)
-                    e_match, e_rest = e, None
                 else:
                     rest.append(e)
-        return (ExceptionGroup(match, tb=self.__traceback__),
-                ExceptionGroup(rest, tb=self.__traceback__))
+        match_exc = ExceptionGroup(match, tb=self.__traceback__)
+        rest_exc = ExceptionGroup(rest, tb=self.__traceback__)
+        match_exc.msg =  rest_exc.msg = self.msg
+        match_exc.__cause__ =  rest_exc.__cause__ = self.__cause__
+        match_exc.__context__ =  rest_exc.__context__ = self.__context__
+        return match_exc, rest_exc
 
     def split(self, type):
         """ Split an ExceptionGroup to extract exceptions of type E
@@ -79,13 +86,15 @@ class ExceptionGroup(BaseException):
         If exc is in this exception group, return its
         traceback as a list of frames. Otherwise, return None.
         """
+        # TODO: integrate into traceback.py style
+        # TODO: return a traceback.StackSummary ?
         if exc not in self:
             return None
         result = []
         e = self.subgroup([exc])
         while e:
             tb = e.__traceback__
-            while tb:
+            while tb is not None:
                 result.append(tb.tb_frame)
                 tb = tb.tb_next
             if isinstance(e, ExceptionGroup):
@@ -96,17 +105,13 @@ class ExceptionGroup(BaseException):
                 e = None
         return result
 
-    def push_frame(self, frame):
-        import types
-        self.__traceback__ = types.TracebackType(
-            self.__traceback__, frame, 0, 0)
-
     @staticmethod
     def render(exc, tb=None, indent=0):
+        # TODO: integrate into traceback.py style
         output = []
         output.append(f"{exc}")
         tb = tb or exc.__traceback__
-        while tb and not isinstance(tb, TracebackGroup):
+        while tb is not None and not isinstance(tb, TracebackGroup):
             output.append(f"{' '*indent} {tb.tb_frame}")
             tb = tb.tb_next
         if isinstance(exc, ExceptionGroup):
@@ -130,6 +135,7 @@ class ExceptionGroup(BaseException):
             else:
                 yield e
 
+    # TODO: replace len by is_empty()
     def __len__(self):
         l = 0
         for e in self.excs:
@@ -174,7 +180,7 @@ class ExceptionGroupCatcher:
                 return False
 
             handler_excs = self.handler(match)
-            if handler_excs == match:
+            if handler_excs is match:
                 # handler reraised all of the matched exceptions.
                 # reraise exc as is.
                 return False

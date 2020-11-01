@@ -226,8 +226,8 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         self.assertIsInstance(match, ExceptionGroup)
         self.assertIsInstance(rest, ExceptionGroup)
 
-        self.assertEqual(len(all_excs), len(eg))
-        self.assertEqual(len(all_excs), len(match) + len(rest))
+        self.assertEqual(len(list(all_excs)), len(list(eg)))
+        self.assertEqual(len(list(all_excs)), len(list(match)) + len(list(rest)))
         for e in all_excs:
             self.assertIn(e, eg)
             # every exception in all_excs is in eg and
