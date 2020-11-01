@@ -49,9 +49,9 @@ class ExceptionGroup(BaseException):
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
                 e_match, e_rest = e.project(condition)
-                if e_match:
+                if not e_match.is_empty():
                     match.append(e_match)
-                if e_rest:
+                if not e_rest.is_empty():
                     rest.append(e_rest)
             else:
                 if condition(e):
@@ -92,7 +92,9 @@ class ExceptionGroup(BaseException):
             return None
         result = []
         e = self.subgroup([exc])
-        while e:
+        while e is not None and\
+            (not isinstance(e, ExceptionGroup) or not e.is_empty()):
+
             tb = e.__traceback__
             while tb is not None:
                 result.append(tb.tb_frame)
@@ -135,15 +137,8 @@ class ExceptionGroup(BaseException):
             else:
                 yield e
 
-    # TODO: replace len by is_empty()
-    def __len__(self):
-        l = 0
-        for e in self.excs:
-            if isinstance(e, ExceptionGroup):
-                l += len(e)
-            else:
-                l += 1
-        return l
+    def is_empty(self):
+        return not any(self)
 
     def __repr__(self):
         return f"ExceptionGroup({self.excs})"
@@ -175,7 +170,7 @@ class ExceptionGroupCatcher:
         if exc is not None and isinstance(exc, ExceptionGroup):
             match, rest = exc.split(self.types)
 
-            if not match:
+            if match.is_empty():
                 # Let the interpreter reraise the exception
                 return False
 
@@ -185,16 +180,18 @@ class ExceptionGroupCatcher:
                 # reraise exc as is.
                 return False
 
-            if not handler_excs and not rest:
-                # handled and swallowed all exceptions
-                # do not raise anything.
-                return True
-
-            if not rest:
+            if handler_excs is None or handler_excs.is_empty():
+                if rest.is_empty():
+                    # handled and swallowed all exceptions
+                    # do not raise anything.
+                    return True
+                else:
+                    # raise the rest exceptions
+                    to_raise = rest
+            elif rest.is_empty():
                 to_raise = handler_excs  # raise what handler returned
-            elif not handler_excs:
-                to_raise = rest       # raise the rest exceptions
             else:
+                # Merge handler's exceptions with rest
                 # to_keep: EG subgroup of exc with only those to reraise
                 # (either not matched or reraised by handler)
                 to_keep = exc.subgroup(
@@ -202,8 +199,9 @@ class ExceptionGroupCatcher:
                 # to_add: new exceptions raised by handler
                 to_add = handler_excs.subgroup(
                     [e for e in handler_excs if e not in match])
-                if to_add:
+                if not to_add.is_empty():
                     to_raise = ExceptionGroup([to_keep, to_add])
+                    to_raise.msg = exc.msg
                 else:
                     to_raise = to_keep
 
