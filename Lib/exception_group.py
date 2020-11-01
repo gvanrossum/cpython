@@ -34,35 +34,47 @@ class ExceptionGroup(BaseException):
         self.__traceback__ = tb
         self.__traceback_group__ = TracebackGroup(self.excs)
 
-    def project(self, condition):
+    def project(self, condition, with_complement=False):
         """ Split an ExceptionGroup based on an exception predicate
 
-        returns two new ExceptionGroups: match, rest of the exceptions
-        of self for which condition(e) returns True and False, respectively.
+        returns a new ExceptionGroup, match, of the exceptions of self
+        for which condition returns True. If with_complement is True,
+        returns another ExceptionGroup for the exception for which
+        condition returns False.
         match and rest have the same nested structure as self, but empty
-        sub-exceptions are not included.
+        sub-exceptions are not included. They have the same msg,
+        __traceback__, __cause__ and __context__ fields as self.
 
         condition: BaseException --> Boolean
+        with_complement: Bool  If True, construct also an EG of the non-matches
         """
-        # TODO: add option to not create 'rest'
-        match, rest = [], []
+        match = []
+        rest = [] if with_complement else None
         for e in self.excs:
             if isinstance(e, ExceptionGroup): # recurse
-                e_match, e_rest = e.project(condition)
+                e_match, e_rest = e.project(
+                    condition, with_complement=with_complement)
                 if not e_match.is_empty():
                     match.append(e_match)
-                if not e_rest.is_empty():
+                if with_complement and not e_rest.is_empty():
                     rest.append(e_rest)
             else:
                 if condition(e):
                     match.append(e)
-                else:
+                elif with_complement:
                     rest.append(e)
+
         match_exc = ExceptionGroup(match, tb=self.__traceback__)
-        rest_exc = ExceptionGroup(rest, tb=self.__traceback__)
-        match_exc.msg =  rest_exc.msg = self.msg
-        match_exc.__cause__ =  rest_exc.__cause__ = self.__cause__
-        match_exc.__context__ =  rest_exc.__context__ = self.__context__
+        def copy_metadata(src, target):
+            target.msg = src.msg
+            target.__context__ = src.__context__
+            target.__cause__ = src.__cause__
+        copy_metadata(self, match_exc)
+        if with_complement:
+            rest_exc = ExceptionGroup(rest, tb=self.__traceback__)
+            copy_metadata(self, rest_exc)
+        else:
+            rest_exc = None
         return match_exc, rest_exc
 
     def split(self, type):
@@ -70,7 +82,9 @@ class ExceptionGroup(BaseException):
 
         type: An exception type
         """
-        return self.project(lambda e: isinstance(e, type))
+        return self.project(
+            lambda e: isinstance(e, type),
+            with_complement=True)
 
     def subgroup(self, keep):
         """ Split an ExceptionGroup to extract only exceptions in keep
