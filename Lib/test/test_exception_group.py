@@ -326,7 +326,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             result = [self.funcname(f) for f in exc.extract_traceback(e)]
 
 
-    def test_catch_handler_raises_subsets_of_caught(self):
+    def test_catch_handler_raises_nothing(self):
         eg = self.eg
         eg_template = self.eg_template
         valueErrors_template = self.valueErrors_template
