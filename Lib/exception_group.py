@@ -8,8 +8,11 @@ class TracebackGroup:
         for e in excs:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
-                    # TODO: what if e_ is an EG? This looks wrong.
-                    self.tb_next_map[id(e_)] = e_.__traceback__
+                    if isinstance(e_, ExceptionGroup):
+                        for k in e_:
+                            self.tb_next_map[id(k)] = e_.__traceback__
+                    else:
+                        self.tb_next_map[id(e_)] = e_.__traceback__
             else:
                 if e.__traceback__:
                     # TODO: is tb_next always correct? explain why.
@@ -20,6 +23,7 @@ class TracebackGroup:
 class ExceptionGroup(BaseException):
 
     def __init__(self, excs, *, msg=None, tb=None):
+        # TODO: msg arg comes first
         """ Construct a new ExceptionGroup
 
         excs: sequence of exceptions
