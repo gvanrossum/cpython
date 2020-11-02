@@ -320,11 +320,14 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         self.typeErrors_template = [[[TypeError(int)],[TypeError(int)]]]
 
 
-    def checkMatch(self, exc, template):
+    def checkMatch(self, exc, template, orig_eg):
         self.assertMatchesTemplate(exc, template)
         for e in exc:
-            result = [self.funcname(f) for f in exc.extract_traceback(e)]
-
+            f_data = lambda f: [f.f_code.co_name, f.f_lineno]
+            new = list(map(f_data, exc.extract_traceback(e)))
+            if e in orig_eg:
+                old = list(map(f_data, orig_eg.extract_traceback(e)))
+                self.assertSequenceEqual(old, new[-len(old):])
 
     def test_catch_handler_raises_nothing(self):
         eg = self.eg
@@ -342,7 +345,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, eg_template)
+        self.checkMatch(raised, eg_template, eg)
         self.assertIsNone(caught)
 
         try: ######### Catch everything:
@@ -350,7 +353,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             with ExceptionGroup.catch((ValueError, TypeError), handler):
                 raise eg
         finally:
-            self.checkMatch(caught, eg_template)
+            self.checkMatch(caught, eg_template, eg)
 
         try: ######### Catch something:
             caught = raised = None
@@ -358,17 +361,17 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, valueErrors_template)
-        self.checkMatch(caught, typeErrors_template)
+        self.checkMatch(raised, valueErrors_template, eg)
+        self.checkMatch(caught, typeErrors_template, eg)
 
         try: ######### Catch something:
             caught = raised = None
             with ExceptionGroup.catch((ValueError, SyntaxError), handler):
                 raise eg
-        except ExceptionGroup as eg:
-            raised = eg
-        self.checkMatch(raised, typeErrors_template)
-        self.checkMatch(caught, valueErrors_template)
+        except ExceptionGroup as e:
+            raised = e
+        self.checkMatch(raised, typeErrors_template, eg)
+        self.checkMatch(caught, valueErrors_template, eg)
 
     def test_catch_handler_adds_new_exceptions(self):
         # create a nested exception group
@@ -395,7 +398,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         except ExceptionGroup as e:
             raised = e
         # handler is never called
-        self.checkMatch(raised, eg_template)
+        self.checkMatch(raised, eg_template, eg)
         self.assertIsNone(caught)
 
         try: ######### Catch everything:
@@ -404,8 +407,8 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, newErrors_template)
-        self.checkMatch(caught, eg_template)
+        self.checkMatch(raised, newErrors_template, eg)
+        self.checkMatch(caught, eg_template, eg)
 
         try: ######### Catch something:
             caught = raised = None
@@ -413,17 +416,17 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, [valueErrors_template, newErrors_template])
-        self.checkMatch(caught, typeErrors_template)
+        self.checkMatch(raised, [valueErrors_template, newErrors_template], eg)
+        self.checkMatch(caught, typeErrors_template, eg)
 
         try: ######### Catch something:
             caught = raised = None
             with ExceptionGroup.catch((ValueError, SyntaxError), handler):
                 raise eg
-        except ExceptionGroup as eg:
-            raised = eg
-        self.checkMatch(raised, [typeErrors_template, newErrors_template])
-        self.checkMatch(caught, valueErrors_template)
+        except ExceptionGroup as e:
+            raised = e
+        self.checkMatch(raised, [typeErrors_template, newErrors_template], eg)
+        self.checkMatch(caught, valueErrors_template, eg)
 
 
     def test_catch_handler_reraise_all_matched(self):
@@ -451,7 +454,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
             except ExceptionGroup as e:
                 raised = e
             # handler is never called
-            self.checkMatch(raised, eg_template)
+            self.checkMatch(raised, eg_template, eg)
             self.assertIsNone(caught)
 
             try: ######### Catch everything:
@@ -460,8 +463,8 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                     raise eg
             except ExceptionGroup as e:
                 raised = e
-            self.checkMatch(raised, eg_template)
-            self.checkMatch(caught, eg_template)
+            self.checkMatch(raised, eg_template, eg)
+            self.checkMatch(caught, eg_template, eg)
 
             try: ######### Catch something:
                 caught = raised = None
@@ -469,8 +472,8 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                     raise eg
             except ExceptionGroup as e:
                 raised = e
-            self.checkMatch(raised, eg_template)
-            self.checkMatch(caught, typeErrors_template)
+            self.checkMatch(raised, eg_template, eg)
+            self.checkMatch(caught, typeErrors_template, eg)
 
             try: ######### Catch something:
                 caught = raised = None
@@ -478,8 +481,8 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                     raise eg
             except ExceptionGroup as e:
                 raised = e
-            self.checkMatch(raised, eg_template)
-            self.checkMatch(caught, valueErrors_template)
+            self.checkMatch(raised, eg_template, eg)
+            self.checkMatch(caught, valueErrors_template, eg)
 
     def test_catch_handler_reraise_new_and_all_old(self):
         eg = self.eg
@@ -503,7 +506,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, [eg_template, newErrors_template])
+        self.checkMatch(raised, [eg_template, newErrors_template], eg)
 
         try: ######### Catch ValueErrors:
             raised = None
@@ -511,7 +514,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 raise eg
         except ExceptionGroup as e:
             raised = e
-        self.checkMatch(raised, [eg_template, newErrors_template])
+        self.checkMatch(raised, [eg_template, newErrors_template], eg)
 
     def test_catch_handler_reraise_new_and_some_old(self):
         eg = self.eg
@@ -536,7 +539,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         except ExceptionGroup as e:
             raised = e
         # all TypeError are in eg.excs[0] so everything was reraised
-        self.checkMatch(raised, [eg_template, newErrors_template])
+        self.checkMatch(raised, [eg_template, newErrors_template], eg)
 
         try: ######### Catch ValueErrors:
             raised = None
@@ -545,7 +548,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         except ExceptionGroup as e:
             raised = e
         # eg.excs[0] is reraised and eg.excs[1] is consumed
-        self.checkMatch(raised, [[eg_template[0]], newErrors_template])
+        self.checkMatch(raised, [[eg_template[0]], newErrors_template], eg)
 
 if __name__ == '__main__':
     unittest.main()
