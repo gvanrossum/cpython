@@ -9,16 +9,13 @@ class TracebackGroup:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
                     if isinstance(e_, ExceptionGroup):
-                        for k in e_:
-                            self.tb_next_map[id(k)] = e_.__traceback__
+                        ks = list(e_)
                     else:
-                        self.tb_next_map[id(e_)] = e_.__traceback__
+                        ks = (e_,)
+                    for k in ks:
+                        self.tb_next_map[id(k)] = e_.__traceback__
             else:
-                if e.__traceback__:
-                    # TODO: is tb_next always correct? explain why.
-                    self.tb_next_map[id(e)] = e.__traceback__.tb_next
-                else:
-                    self.tb_next_map[id(e)] = None
+                self.tb_next_map[id(e)] = e.__traceback__
 
 class ExceptionGroup(BaseException):
 
@@ -129,7 +126,7 @@ class ExceptionGroup(BaseException):
     def render(exc, tb=None, indent=0):
         # TODO: integrate into traceback.py style
         output = []
-        output.append(f"{exc}")
+        output.append(f"{exc!r}")
         tb = tb or exc.__traceback__
         while tb is not None and not isinstance(tb, TracebackGroup):
             output.append(f"{' '*indent} {tb.tb_frame}")
