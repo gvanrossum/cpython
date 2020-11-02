@@ -19,8 +19,7 @@ class TracebackGroup:
 
 class ExceptionGroup(BaseException):
 
-    def __init__(self, excs, *, msg=None, tb=None):
-        # TODO: msg arg comes first
+    def __init__(self, excs, message=None, *, tb=None):
         """ Construct a new ExceptionGroup
 
         excs: sequence of exceptions
@@ -28,7 +27,8 @@ class ExceptionGroup(BaseException):
         Typically set when this ExceptionGroup is derived from another.
         """
         self.excs = excs
-        self.msg = msg
+        self.message = message
+        super().__init__(self.message)
         # self.__traceback__ is updated as usual, but self.__traceback_group__
         # is set when the exception group is created.
         # __traceback_group__ and __traceback__ combine to give the full path.
@@ -43,7 +43,7 @@ class ExceptionGroup(BaseException):
         returns another ExceptionGroup for the exception for which
         condition returns False.
         match and rest have the same nested structure as self, but empty
-        sub-exceptions are not included. They have the same msg,
+        sub-exceptions are not included. They have the same message,
         __traceback__, __cause__ and __context__ fields as self.
 
         condition: BaseException --> Boolean
@@ -67,7 +67,7 @@ class ExceptionGroup(BaseException):
 
         match_exc = ExceptionGroup(match, tb=self.__traceback__)
         def copy_metadata(src, target):
-            target.msg = src.msg
+            target.message = src.message
             target.__context__ = src.__context__
             target.__cause__ = src.__cause__
         copy_metadata(self, match_exc)
@@ -216,7 +216,7 @@ class ExceptionGroupCatcher:
                     [e for e in handler_excs if e not in match])
                 if not to_add.is_empty():
                     to_raise = ExceptionGroup([to_keep, to_add])
-                    to_raise.msg = exc.msg
+                    to_raise.message = exc.message
                 else:
                     to_raise = to_keep
 

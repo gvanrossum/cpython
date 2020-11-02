@@ -34,7 +34,7 @@ class ExceptionGroupTestBase(unittest.TestCase):
 
 class ExceptionGroupTestUtils(ExceptionGroupTestBase):
 
-    def create_EG(self, raisers):
+    def create_EG(self, raisers, message=None):
         excs = []
         for r in raisers:
             try:
@@ -42,7 +42,7 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
             except (Exception, ExceptionGroup) as e:
                 excs.append(e)
         try:
-            raise ExceptionGroup(excs)
+            raise ExceptionGroup(excs, message=message)
         except ExceptionGroup as e:
             return e
 
@@ -73,7 +73,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             [bind(self.raiseValueError, 1),
              bind(self.raiseTypeError, int),
              bind(self.raiseValueError, 2),
-            ])
+            ], message='hello world')
 
         self.assertEqual(len(eg.excs), 3)
         self.assertMatchesTemplate(eg,
@@ -81,6 +81,10 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 
         # check iteration
         self.assertEqual(list(eg), list(eg.excs))
+
+        # check message
+        self.assertEqual(eg.message, 'hello world')
+        self.assertEqual(eg.args, ('hello world',))
 
         # check tracebacks
         for e in eg:
