@@ -189,8 +189,14 @@ class ExceptionGroupCatcher:
                 # Let the interpreter reraise the exception
                 return False
 
-            handler_excs = self.handler(match)
-            if handler_excs is match:
+            naked_raise = False
+            handler_excs = None
+            try:
+                naked_raise = self.handler(match)
+            except (Exception, ExceptionGroup) as e:
+                handler_excs = e
+
+            if naked_raise or handler_excs is match:
                 # handler reraised all of the matched exceptions.
                 # reraise exc as is.
                 return False

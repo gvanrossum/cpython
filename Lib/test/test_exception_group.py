@@ -380,10 +380,10 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         def handler(eg):
             nonlocal caught
             caught = eg
-            return ExceptionGroup(
-                       [ValueError('foo'),
-                        ExceptionGroup(
-                            [SyntaxError('bar'), ValueError('baz')])])
+            raise ExceptionGroup(
+                      [ValueError('foo'),
+                       ExceptionGroup(
+                           [SyntaxError('bar'), ValueError('baz')])])
 
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
@@ -432,47 +432,54 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         valueErrors_template = self.valueErrors_template
         typeErrors_template = self.typeErrors_template
 
-        def handler(eg):
+        # There are two ways to do this
+        def handler1(eg):
             nonlocal caught
             caught = eg
-            return eg
+            return True
 
-        try: ######### Catch nothing:
-            caught = raised = None
-            with ExceptionGroup.catch(SyntaxError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        # handler is never called
-        self.checkMatch(raised, eg_template)
-        self.assertIsNone(caught)
+        def handler2(eg):
+            nonlocal caught
+            caught = eg
+            raise eg
 
-        try: ######### Catch everything:
-            caught = None
-            with ExceptionGroup.catch((ValueError, TypeError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        self.checkMatch(raised, eg_template)
-        self.checkMatch(caught, eg_template)
+        for handler in [handler1, handler2]:
+            try: ######### Catch nothing:
+                caught = raised = None
+                with ExceptionGroup.catch(SyntaxError, handler):
+                    raise eg
+            except ExceptionGroup as e:
+                raised = e
+            # handler is never called
+            self.checkMatch(raised, eg_template)
+            self.assertIsNone(caught)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch(TypeError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        self.checkMatch(raised, eg_template)
-        self.checkMatch(caught, typeErrors_template)
+            try: ######### Catch everything:
+                caught = None
+                with ExceptionGroup.catch((ValueError, TypeError), handler):
+                    raise eg
+            except ExceptionGroup as e:
+                raised = e
+            self.checkMatch(raised, eg_template)
+            self.checkMatch(caught, eg_template)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        self.checkMatch(raised, eg_template)
-        self.checkMatch(caught, valueErrors_template)
+            try: ######### Catch something:
+                caught = raised = None
+                with ExceptionGroup.catch(TypeError, handler):
+                    raise eg
+            except ExceptionGroup as e:
+                raised = e
+            self.checkMatch(raised, eg_template)
+            self.checkMatch(caught, typeErrors_template)
+
+            try: ######### Catch something:
+                caught = raised = None
+                with ExceptionGroup.catch((ValueError, SyntaxError), handler):
+                    raise eg
+            except ExceptionGroup as e:
+                raised = e
+            self.checkMatch(raised, eg_template)
+            self.checkMatch(caught, valueErrors_template)
 
     def test_catch_handler_reraise_new_and_all_old(self):
         eg = self.eg
@@ -481,11 +488,11 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         typeErrors_template = self.typeErrors_template
 
         def handler(eg):
-            return ExceptionGroup(
-                       [eg,
-                        ValueError('foo'),
-                        ExceptionGroup(
-                            [SyntaxError('bar'), ValueError('baz')])])
+            raise ExceptionGroup(
+                      [eg,
+                       ValueError('foo'),
+                       ExceptionGroup(
+                           [SyntaxError('bar'), ValueError('baz')])])
 
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
@@ -513,12 +520,11 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         typeErrors_template = self.typeErrors_template
 
         def handler(eg):
-            ret = ExceptionGroup(
+            raise ExceptionGroup(
                        [eg.excs[0],
                         ValueError('foo'),
                         ExceptionGroup(
                             [SyntaxError('bar'), ValueError('baz')])])
-            return ret
 
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
