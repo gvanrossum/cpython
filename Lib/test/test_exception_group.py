@@ -329,47 +329,53 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
                 old = list(map(f_data, orig_eg.extract_traceback(e)))
                 self.assertSequenceEqual(old, new[-len(old):])
 
+    class BaseHandler:
+        def __init__(self):
+            self.caught = None
+
+        def __call__(self, eg):
+            self.caught = eg
+            return self.handle(eg)
+
+    def apply_catcher(self, catch, handler_cls, eg):
+        try:
+            raised = None
+            handler = handler_cls()
+            with ExceptionGroup.catch(catch, handler):
+                raise eg
+        except ExceptionGroup as e:
+            raised = e
+        return handler.caught, raised
+
     def test_catch_handler_raises_nothing(self):
         eg = self.eg
         eg_template = self.eg_template
         valueErrors_template = self.valueErrors_template
         typeErrors_template = self.typeErrors_template
 
-        def handler(e):
-            nonlocal caught
-            caught = e
+        class Handler(self.BaseHandler):
+            def handle(self, eg):
+                pass
 
-        try: ######### Catch nothing:
-            caught = raised = None
-            with ExceptionGroup.catch(SyntaxError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+         ######### Catch nothing:
+        caught, raised = self.apply_catcher(SyntaxError, Handler, eg)
         self.checkMatch(raised, eg_template, eg)
         self.assertIsNone(caught)
 
-        try: ######### Catch everything:
-            caught = None
-            with ExceptionGroup.catch((ValueError, TypeError), handler):
-                raise eg
-        finally:
-            self.checkMatch(caught, eg_template, eg)
+        ######### Catch everything:
+        error_types = (ValueError, TypeError)
+        caught, raised = self.apply_catcher(error_types, Handler, eg)
+        self.assertIsNone(raised)
+        self.checkMatch(caught, eg_template, eg)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch(TypeError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch TypeErrors:
+        caught, raised = self.apply_catcher(TypeError, Handler, eg)
         self.checkMatch(raised, valueErrors_template, eg)
         self.checkMatch(caught, typeErrors_template, eg)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch ValueErrors:
+        error_types = (ValueError, SyntaxError)
+        caught, raised = self.apply_catcher(error_types, Handler, eg)
         self.checkMatch(raised, typeErrors_template, eg)
         self.checkMatch(caught, valueErrors_template, eg)
 
@@ -380,10 +386,9 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         valueErrors_template = self.valueErrors_template
         typeErrors_template = self.typeErrors_template
 
-        def handler(eg):
-            nonlocal caught
-            caught = eg
-            raise ExceptionGroup(
+        class Handler(self.BaseHandler):
+            def handle(self, eg):
+                raise ExceptionGroup(
                       [ValueError('foo'),
                        ExceptionGroup(
                            [SyntaxError('bar'), ValueError('baz')])])
@@ -391,40 +396,24 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
 
-        try: ######### Catch nothing:
-            caught = raised = None
-            with ExceptionGroup.catch(SyntaxError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        # handler is never called
+        ######### Catch nothing:
+        caught, raised = self.apply_catcher(SyntaxError, Handler, eg)
         self.checkMatch(raised, eg_template, eg)
         self.assertIsNone(caught)
 
-        try: ######### Catch everything:
-            caught = None
-            with ExceptionGroup.catch((ValueError, TypeError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch everything:
+        error_types = (ValueError, TypeError)
+        caught, raised = self.apply_catcher(error_types, Handler, eg)
         self.checkMatch(raised, newErrors_template, eg)
         self.checkMatch(caught, eg_template, eg)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch(TypeError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch TypeErrors:
+        caught, raised = self.apply_catcher(TypeError, Handler, eg)
         self.checkMatch(raised, [valueErrors_template, newErrors_template], eg)
         self.checkMatch(caught, typeErrors_template, eg)
 
-        try: ######### Catch something:
-            caught = raised = None
-            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch ValueErrors:
+        caught, raised = self.apply_catcher((ValueError, OSError), Handler, eg)
         self.checkMatch(raised, [typeErrors_template, newErrors_template], eg)
         self.checkMatch(caught, valueErrors_template, eg)
 
@@ -436,51 +425,35 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         typeErrors_template = self.typeErrors_template
 
         # There are two ways to do this
-        def handler1(eg):
-            nonlocal caught
-            caught = eg
-            return True
+        class Handler1(self.BaseHandler):
+            def handle(self, eg):
+                return True
 
-        def handler2(eg):
-            nonlocal caught
-            caught = eg
-            raise eg
+        class Handler2(self.BaseHandler):
+            def handle(self, eg):
+                raise eg
 
-        for handler in [handler1, handler2]:
-            try: ######### Catch nothing:
-                caught = raised = None
-                with ExceptionGroup.catch(SyntaxError, handler):
-                    raise eg
-            except ExceptionGroup as e:
-                raised = e
+        for handler in [Handler1, Handler2]:
+             ######### Catch nothing:
+            caught, raised = self.apply_catcher(SyntaxError, handler, eg)
             # handler is never called
             self.checkMatch(raised, eg_template, eg)
             self.assertIsNone(caught)
 
-            try: ######### Catch everything:
-                caught = None
-                with ExceptionGroup.catch((ValueError, TypeError), handler):
-                    raise eg
-            except ExceptionGroup as e:
-                raised = e
+            ######### Catch everything:
+            error_types = (ValueError, TypeError)
+            caught, raised = self.apply_catcher(error_types, handler, eg)
             self.checkMatch(raised, eg_template, eg)
             self.checkMatch(caught, eg_template, eg)
 
-            try: ######### Catch something:
-                caught = raised = None
-                with ExceptionGroup.catch(TypeError, handler):
-                    raise eg
-            except ExceptionGroup as e:
-                raised = e
+            ######### Catch TypeErrors:
+            caught, raised = self.apply_catcher(TypeError, handler, eg)
             self.checkMatch(raised, eg_template, eg)
             self.checkMatch(caught, typeErrors_template, eg)
 
-            try: ######### Catch something:
-                caught = raised = None
-                with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                    raise eg
-            except ExceptionGroup as e:
-                raised = e
+            ######### Catch ValueErrors:
+            catch = (ValueError, SyntaxError)
+            caught, raised = self.apply_catcher(catch, handler, eg)
             self.checkMatch(raised, eg_template, eg)
             self.checkMatch(caught, valueErrors_template, eg)
 
@@ -490,8 +463,9 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         valueErrors_template = self.valueErrors_template
         typeErrors_template = self.typeErrors_template
 
-        def handler(eg):
-            raise ExceptionGroup(
+        class Handler(self.BaseHandler):
+            def handle(self, eg):
+                raise ExceptionGroup(
                       [eg,
                        ValueError('foo'),
                        ExceptionGroup(
@@ -500,21 +474,15 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
 
-        try: ######### Catch TypeErrors:
-            raised = None
-            with ExceptionGroup.catch(TypeError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch TypeErrors:
+        caught, raised = self.apply_catcher(TypeError, Handler, eg)
         self.checkMatch(raised, [eg_template, newErrors_template], eg)
+        self.checkMatch(caught, typeErrors_template, eg)
 
-        try: ######### Catch ValueErrors:
-            raised = None
-            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch ValueErrors:
+        caught, raised = self.apply_catcher(ValueError, Handler, eg)
         self.checkMatch(raised, [eg_template, newErrors_template], eg)
+        self.checkMatch(caught, valueErrors_template, eg)
 
     def test_catch_handler_reraise_new_and_some_old(self):
         eg = self.eg
@@ -522,33 +490,27 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         valueErrors_template = self.valueErrors_template
         typeErrors_template = self.typeErrors_template
 
-        def handler(eg):
-            raise ExceptionGroup(
-                       [eg.excs[0],
-                        ValueError('foo'),
-                        ExceptionGroup(
-                            [SyntaxError('bar'), ValueError('baz')])])
+        class Handler(self.BaseHandler):
+            def handle(self, eg):
+                raise ExceptionGroup(
+                    [eg.excs[0],
+                    ValueError('foo'),
+                    ExceptionGroup(
+                        [SyntaxError('bar'), ValueError('baz')])])
 
         newErrors_template = [
             ValueError('foo'), [SyntaxError('bar'), ValueError('baz')]]
 
-        try: ######### Catch TypeErrors:
-            raised = None
-            with ExceptionGroup.catch(TypeError, handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
-        # all TypeError are in eg.excs[0] so everything was reraised
+        ######### Catch TypeErrors:
+        caught, raised = self.apply_catcher(TypeError, Handler, eg)
         self.checkMatch(raised, [eg_template, newErrors_template], eg)
+        self.checkMatch(caught, typeErrors_template, eg)
 
-        try: ######### Catch ValueErrors:
-            raised = None
-            with ExceptionGroup.catch((ValueError, SyntaxError), handler):
-                raise eg
-        except ExceptionGroup as e:
-            raised = e
+        ######### Catch ValueErrors:
+        caught, raised = self.apply_catcher(ValueError, Handler, eg)
         # eg.excs[0] is reraised and eg.excs[1] is consumed
         self.checkMatch(raised, [[eg_template[0]], newErrors_template], eg)
+        self.checkMatch(caught, valueErrors_template, eg)
 
 if __name__ == '__main__':
     unittest.main()
