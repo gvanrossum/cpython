@@ -1,5 +1,7 @@
 
 import sys
+import textwrap
+import traceback
 
 
 class TracebackGroup:
@@ -99,49 +101,43 @@ class ExceptionGroup(BaseException):
         """ returns the traceback of a single exception
 
         If exc is in this exception group, return its
-        traceback as a list of frames. Otherwise, return None.
+        traceback as the concatenation of the outputs
+        of traceback.extract_tb() on each segment of
+        it traceback (one per each ExceptionGroup that
+        it belongs to).
         """
-        # TODO: integrate into traceback.py style
-        # TODO: return a traceback.StackSummary ?
         if exc not in self:
             return None
-        result = []
         e = self.subgroup([exc])
-        while e is not None and\
-            (not isinstance(e, ExceptionGroup) or not e.is_empty()):
-
-            tb = e.__traceback__
-            while tb is not None:
-                result.append(tb.tb_frame)
-                tb = tb.tb_next
+        result = None
+        while e is not None:
             if isinstance(e, ExceptionGroup):
-                assert len(e.excs) == 1 and exc in e
-                e = e.excs[0]
+               assert len(e.excs) == 1 and exc in e
+            r = traceback.extract_tb(e.__traceback__)
+            if result is not None:
+                result.extend(r)
             else:
-                assert e is exc
-                e = None
+                result = r
+            e = e.excs[0] if isinstance(e, ExceptionGroup) else None
         return result
 
     @staticmethod
-    def render(exc, tb=None, indent=0):
-        # TODO: integrate into traceback.py style
-        output = []
-        output.append(f"{exc!r}")
-        tb = tb or exc.__traceback__
-        while tb is not None and not isinstance(tb, TracebackGroup):
-            output.append(f"{' '*indent} {tb.tb_frame}")
-            tb = tb.tb_next
-        if isinstance(exc, ExceptionGroup):
-            tbg = exc.__traceback_group__
-            assert isinstance(tbg, TracebackGroup)
-            indent += 4
-            for e in exc.excs:
-                t = tbg.tb_next_map[id(e)]
-                output.append('---------------------------------------')
-                output.extend(ExceptionGroup.render(e, t, indent))
-        for l in output:
-            print(l)
-        return output
+    def format(exc, **kwargs):
+        result = []
+        summary = StackGroupSummary.extract(exc, **kwargs)
+        for indent, exc_str, stack in summary:
+            prefix = ' '*indent
+            result.append(f"{prefix}{exc_str}:")
+            stack = traceback.StackSummary.format(stack)
+            result.extend([textwrap.indent(l.rstrip(), prefix) for l in stack])
+        return result
+
+    @staticmethod
+    def render(exc, file=None, **kwargs):
+        if file is None:
+            file = sys.stderr
+        for line in ExceptionGroup.format(exc, **kwargs):
+            print(line, file=file)
 
     def __iter__(self):
         ''' iterate over the individual exceptions (flattens the tree) '''
@@ -161,6 +157,23 @@ class ExceptionGroup(BaseException):
     @staticmethod
     def catch(types, handler):
         return ExceptionGroupCatcher(types, handler)
+
+class StackGroupSummary(list):
+    @classmethod
+    def extract(klass, exc, *, indent=0, result=None,
+                limit=None, lookup_lines=True, capture_locals=False):
+
+        if result is None:
+            result = klass()
+        result.append([
+            indent,
+            f"{exc!r}",
+            traceback.extract_tb(exc.__traceback__, limit=limit)])
+        if isinstance(exc, ExceptionGroup):
+            for e in exc.excs:
+                StackGroupSummary.extract(
+                    e, indent=indent+4, result=result, limit=limit)
+        return result
 
 class ExceptionGroupCatcher:
     """ Based on trio.MultiErrorCatcher """

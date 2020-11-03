@@ -1,8 +1,9 @@
 
-import functools
-import unittest
 import collections.abc
-from exception_group import ExceptionGroup, TracebackGroup
+import functools
+import traceback
+import unittest
+from exception_group import ExceptionGroup, TracebackGroup, StackGroupSummary
 
 
 class ExceptionGroupTestBase(unittest.TestCase):
@@ -34,7 +35,7 @@ class ExceptionGroupTestBase(unittest.TestCase):
 
 class ExceptionGroupTestUtils(ExceptionGroupTestBase):
 
-    def create_EG(self, raisers, message=None):
+    def newEG(self, raisers, message=None):
         excs = []
         for r in raisers:
             try:
@@ -46,22 +47,11 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
         except ExceptionGroup as e:
             return e
 
-    def raiseValueError(self, v):
+    def newVE(self, v):
         raise ValueError(v)
 
-    def raiseTypeError(self, t):
+    def newTE(self, t):
         raise TypeError(t)
-
-    def funcname(self, tb_frame):
-        return tb_frame.f_code.co_name
-
-    def funcnames(self, tb):
-        """ Extract function names from a traceback """
-        names = []
-        while tb:
-            names.append(self.funcname(tb.tb_frame))
-            tb = tb.tb_next
-        return names
 
 class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 
@@ -69,11 +59,11 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         # create a simple exception group and check that
         # it is constructed as expected
         bind = functools.partial
-        eg = self.create_EG(
-            [bind(self.raiseValueError, 1),
-             bind(self.raiseTypeError, int),
-             bind(self.raiseValueError, 2),
-            ], message='hello world')
+        eg = self.newEG(
+            [bind(self.newVE, 1),
+             bind(self.newTE, int),
+             bind(self.newVE, 2),
+            ], message='simple EG')
 
         self.assertEqual(len(eg.excs), 3)
         self.assertMatchesTemplate(eg,
@@ -83,39 +73,39 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         self.assertEqual(list(eg), list(eg.excs))
 
         # check message
-        self.assertEqual(eg.message, 'hello world')
-        self.assertEqual(eg.args, ('hello world',))
+        self.assertEqual(eg.message, 'simple EG')
+        self.assertEqual(eg.args, ('simple EG',))
 
         # check tracebacks
         for e in eg:
             expected = [
-                'create_EG',
-                'create_EG',
-                'raise'+type(e).__name__,
+                'newEG',
+                'newEG',
+                'new'+ ''.join(filter(str.isupper, type(e).__name__)),
             ]
             etb = eg.extract_traceback(e)
-            self.assertEqual(expected, [self.funcname(f) for f in etb])
+            self.assertEqual(expected, [f.name for f in etb])
 
     def test_construction_nested(self):
         # create a nested exception group and check that
         # it is constructed as expected
         bind = functools.partial
-        level1 = lambda i: self.create_EG([
-                bind(self.raiseValueError, i),
-                bind(self.raiseTypeError, int),
-                bind(self.raiseValueError, i+1),
+        level1 = lambda i: self.newEG([
+                bind(self.newVE, i),
+                bind(self.newTE, int),
+                bind(self.newVE, i+1),
             ])
 
-        def raiseException(e): raise e
-        level2 = lambda i : self.create_EG([
-                bind(raiseException, level1(i)),
-                bind(raiseException, level1(i+1)),
-                bind(self.raiseValueError, i+2),
+        def raiseExc(e): raise e
+        level2 = lambda i : self.newEG([
+                bind(raiseExc, level1(i)),
+                bind(raiseExc, level1(i+1)),
+                bind(self.newVE, i+2),
             ])
 
-        level3 = lambda i : self.create_EG([
-                bind(raiseException, level2(i+1)),
-                bind(self.raiseValueError, i+2),
+        level3 = lambda i : self.newEG([
+                bind(raiseExc, level2(i+1)),
+                bind(self.newVE, i+2),
             ])
         eg = level3(5)
 
@@ -130,7 +120,6 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             ])
 
         # check iteration
-
         self.assertEqual(len(list(eg)), 8)
 
         # check tracebacks
@@ -140,23 +129,96 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         all_excs = list(eg)
         for e in all_excs[0:6]:
             expected = [
-                'create_EG',
-                'create_EG',
-                'raiseException',
-                'create_EG',
-                'create_EG',
-                'raiseException',
-                'create_EG',
-                'create_EG',
-                'raise'+type(e).__name__,
+                'newEG',
+                'newEG',
+                'raiseExc',
+                'newEG',
+                'newEG',
+                'raiseExc',
+                'newEG',
+                'newEG',
+                'new' + ''.join(filter(str.isupper, type(e).__name__)),
             ]
             etb = eg.extract_traceback(e)
-            self.assertEqual(expected, [self.funcname(f) for f in etb])
-        self.assertEqual(['create_EG', 'create_EG', 'raiseException',
-            'create_EG', 'create_EG', 'raiseValueError'],
-            [self.funcname(f) for f in eg.extract_traceback(all_excs[6])])
-        self.assertEqual(['create_EG', 'create_EG', 'raiseValueError'],
-            [self.funcname(f) for f in eg.extract_traceback(all_excs[7])])
+            self.assertEqual(expected, [f.name for f in etb])
+        self.assertEqual([
+            'newEG', 'newEG', 'raiseExc', 'newEG', 'newEG', 'newVE'],
+            [f.name  for f in eg.extract_traceback(all_excs[6])])
+        self.assertEqual(['newEG', 'newEG', 'newVE'],
+            [f.name  for f in eg.extract_traceback(all_excs[7])])
+
+
+class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
+    def test_stack_summary_simple(self):
+        bind = functools.partial
+        eg = self.newEG(
+            [bind(self.newVE, 1),
+             bind(self.newTE, int),
+             bind(self.newVE, 2),
+            ], message='hello world')
+
+        summary = StackGroupSummary.extract(eg)
+        self.assertEqual(4, len(summary))
+        indents   = [e[0] for e in summary]
+        exc_reprs = [e[1] for e in summary]
+        frames    = [e[2] for e in summary]
+        self.assertEqual(indents, [0,4,4,4])
+        self.assertEqual(exc_reprs, [repr(e) for e in [eg] + eg.excs])
+        functions = [
+            ['newEG'],
+            ['newEG', 'newVE'],
+            ['newEG', 'newTE'],
+            ['newEG', 'newVE'],
+        ]
+        for expected, found in zip (functions, frames):
+            self.assertEqual(len(expected), len(found))
+            self.assertEqual(expected, [f.name for f in found])
+
+    def test_stack_summary_nested(self):
+        bind = functools.partial
+        level1 = lambda i: self.newEG([
+                bind(self.newVE, i),
+                bind(self.newTE, int),
+                bind(self.newVE, i+1),
+            ])
+
+        def raiseExc(e): raise e
+        level2 = lambda i : self.newEG([
+                bind(raiseExc, level1(i)),
+                bind(raiseExc, level1(i+1)),
+                bind(self.newVE, i+2),
+            ])
+
+        level3 = lambda i : self.newEG([
+                bind(raiseExc, level2(i+1)),
+                bind(self.newVE, i+2),
+            ])
+        eg = level3(5)
+
+        summary = StackGroupSummary.extract(eg)
+        self.assertEqual(12, len(summary))
+        indents   = [e[0] for e in summary]
+        exc_reprs = [e[1] for e in summary]
+        frames    = [e[2] for e in summary]
+        expected = [
+            [0, eg, ['newEG']],
+            [4, eg.excs[0], ['newEG', 'raiseExc', 'newEG']],
+            [8, eg.excs[0].excs[0], ['newEG', 'raiseExc', 'newEG']],
+            [12, eg.excs[0].excs[0].excs[0], ['newEG', 'newVE']],
+            [12, eg.excs[0].excs[0].excs[1], ['newEG', 'newTE']],
+            [12, eg.excs[0].excs[0].excs[2], ['newEG', 'newVE']],
+            [8, eg.excs[0].excs[1], ['newEG', 'raiseExc', 'newEG']],
+            [12, eg.excs[0].excs[1].excs[0], ['newEG', 'newVE']],
+            [12, eg.excs[0].excs[1].excs[1], ['newEG', 'newTE']],
+            [12, eg.excs[0].excs[1].excs[2], ['newEG', 'newVE']],
+            [8, eg.excs[0].excs[2], ['newEG', 'newVE']],
+            [4, eg.excs[1], ['newEG', 'newVE']],
+        ]
+        self.assertEqual(indents, [e[0] for e in expected])
+        self.assertEqual(exc_reprs, [repr(e[1]) for e in expected])
+        expected_names = [e[2] for e in expected]
+        actual_names = [[f.name for f in frame] for frame in frames]
+        self.assertSequenceEqual(expected_names, actual_names)
 
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
@@ -164,7 +226,7 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
     def _split_exception_group(self, eg, types):
         """ Split an EG and do some sanity checks on the result """
         self.assertIsInstance(eg, ExceptionGroup)
-        fnames = self.funcnames(eg.__traceback__)
+        fnames = [t.name for t in traceback.extract_tb(eg.__traceback__)]
         all_excs = list(eg)
 
         match, rest = eg.split(types)
@@ -184,8 +246,9 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         for e in rest:
             self.assertNotIsInstance(e, types)
 
-        # check tracebacks
         for part in [match, rest]:
+            self.assertEqual(eg.message, part.message)
+            # check tracebacks
             for e in part:
                 self.assertEqual(
                     eg.extract_traceback(e),
@@ -196,30 +259,31 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
     def test_split_nested(self):
         # create a nested exception group
         bind = functools.partial
-        level1 = lambda i: self.create_EG([
-                bind(self.raiseValueError, i),
-                bind(self.raiseTypeError, int),
-                bind(self.raiseValueError, i+11),
-            ])
+        level1 = lambda i: self.newEG([
+                bind(self.newVE, i),
+                bind(self.newTE, int),
+                bind(self.newVE, i+11),
+            ], message='level1')
 
-        def raiseException(e): raise e
-        level2 = lambda i : self.create_EG([
-                bind(raiseException, level1(i)),
-                bind(raiseException, level1(i+22)),
-                bind(self.raiseValueError, i+33),
-            ])
+        def raiseExc(e): raise e
+        level2 = lambda i : self.newEG([
+                bind(raiseExc, level1(i)),
+                bind(raiseExc, level1(i+22)),
+                bind(self.newVE, i+33),
+            ], message='level2')
 
-        level3 = lambda i : self.create_EG([
-                bind(raiseException, level2(i+44)),
-                bind(self.raiseValueError, i+55),
-            ])
+        level3 = lambda i : self.newEG([
+                bind(raiseExc, level2(i+44)),
+                bind(self.newVE, i+55),
+            ], message='split me')
         try:
             raise level3(6)
         except ExceptionGroup as e:
             eg = e
 
-        fnames = ['test_split_nested', 'create_EG']
-        self.assertEqual(self.funcnames(eg.__traceback__), fnames)
+        fnames = ['test_split_nested', 'newEG']
+        self.assertEqual(fnames,
+            [t.name for t in traceback.extract_tb(eg.__traceback__)])
 
         eg_template = [
                         [
@@ -271,51 +335,52 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
     def setUp(self):
         super().setUp()
 
-       # create a nested exception group
+        # create a nested exception group
         bind = functools.partial
-        level1 = lambda i: self.create_EG([
-                bind(self.raiseValueError, i),
-                bind(self.raiseTypeError, int),
-                bind(self.raiseValueError, i+10),
+        level1 = lambda i: self.newEG([
+                bind(self.newVE, i),
+                bind(self.newTE, int),
+                bind(self.newVE, i+10),
             ])
 
-        def raiseException(e): raise e
-        level2 = lambda i : self.create_EG([
-                bind(raiseException, level1(i)),
-                bind(raiseException, level1(i+20)),
-                bind(self.raiseValueError, i+30),
+        def raiseExc(e): raise e
+        level2 = lambda i : self.newEG([
+                bind(raiseExc, level1(i)),
+                bind(raiseExc, level1(i+20)),
+                bind(self.newVE, i+30),
             ])
 
-        level3 = lambda i : self.create_EG([
-                bind(raiseException, level2(i+40)),
-                bind(self.raiseValueError, i+50),
-            ])
+        level3 = lambda i : self.newEG([
+                bind(raiseExc, level2(i+40)),
+                bind(self.newVE, i+50),
+            ], message='nested EG')
         try:
             raise level3(5)
         except ExceptionGroup as e:
             self.eg = e
 
-        fnames = ['setUp', 'create_EG']
-        self.assertEqual(self.funcnames(self.eg.__traceback__), fnames)
+        fnames = ['setUp', 'newEG']
+        self.assertEqual(fnames,
+            [t.name for t in traceback.extract_tb(self.eg.__traceback__)])
 
         # templates
         self.eg_template = [
-                        [
-                            [ValueError(45), TypeError(int), ValueError(55)],
-                            [ValueError(65), TypeError(int), ValueError(75)],
-                            ValueError(75),
-                        ],
-                        ValueError(55)
-                      ]
+            [
+                [ValueError(45), TypeError(int), ValueError(55)],
+                [ValueError(65), TypeError(int), ValueError(75)],
+                ValueError(75),
+            ],
+            ValueError(55)
+        ]
 
         self.valueErrors_template = [
-                                        [
-                                            [ValueError(45), ValueError(55)],
-                                            [ValueError(65), ValueError(75)],
-                                            ValueError(75),
-                                        ],
-                                        ValueError(55)
-                                   ]
+            [
+                [ValueError(45), ValueError(55)],
+                [ValueError(65), ValueError(75)],
+                ValueError(75),
+            ],
+            ValueError(55)
+        ]
 
         self.typeErrors_template = [[[TypeError(int)],[TypeError(int)]]]
 
@@ -323,7 +388,7 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
     def checkMatch(self, exc, template, orig_eg):
         self.assertMatchesTemplate(exc, template)
         for e in exc:
-            f_data = lambda f: [f.f_code.co_name, f.f_lineno]
+            f_data = lambda f: [f.name, f.lineno]
             new = list(map(f_data, exc.extract_traceback(e)))
             if e in orig_eg:
                 old = list(map(f_data, orig_eg.extract_traceback(e)))
