@@ -4,7 +4,8 @@ import functools
 import traceback
 import unittest
 from exception_group import ExceptionGroup, TracebackGroup, StackGroupSummary
-
+from io import StringIO
+import re
 
 class ExceptionGroupTestBase(unittest.TestCase):
 
@@ -162,17 +163,33 @@ class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
         indents   = [e[0] for e in summary]
         exc_reprs = [e[1] for e in summary]
         frames    = [e[2] for e in summary]
-        self.assertEqual(indents, [0,4,4,4])
-        self.assertEqual(exc_reprs, [repr(e) for e in [eg] + eg.excs])
-        functions = [
-            ['newEG'],
-            ['newEG', 'newVE'],
-            ['newEG', 'newTE'],
-            ['newEG', 'newVE'],
+        expected = [
+            [0, eg, ['newEG']],
+            [4, eg.excs[0], ['newEG', 'newVE']],
+            [4, eg.excs[1], ['newEG', 'newTE']],
+            [4, eg.excs[2], ['newEG', 'newVE']],
         ]
-        for expected, found in zip (functions, frames):
-            self.assertEqual(len(expected), len(found))
-            self.assertEqual(expected, [f.name for f in found])
+        self.assertEqual(indents, [e[0] for e in expected])
+        self.assertEqual(exc_reprs, [repr(e[1]) for e in expected])
+        expected_names = [e[2] for e in expected]
+        actual_names = [[f.name for f in frame] for frame in frames]
+        self.assertSequenceEqual(expected_names, actual_names)
+
+        self.check_format_and_render(eg, expected)
+
+    def check_format_and_render(self, eg, expected):
+        re_arr = ['.*']
+        for e in expected:
+            re_arr.append(type(e[1]).__name__)
+            for name in e[2]:
+                re_arr.append(name)
+        re_arr.append('.*')
+        format_re = re.compile('.*'.join(re_arr), re.MULTILINE | re.DOTALL)
+        format_output = ExceptionGroup.format(eg)
+        self.assertRegex(''.join(format_output), format_re)
+        render_output = StringIO()
+        ExceptionGroup.render(eg, file=render_output)
+        self.assertRegex(''.join(render_output.getvalue()), format_re)
 
     def test_stack_summary_nested(self):
         bind = functools.partial
@@ -219,7 +236,6 @@ class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
         expected_names = [e[2] for e in expected]
         actual_names = [[f.name for f in frame] for frame in frames]
         self.assertSequenceEqual(expected_names, actual_names)
-
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
 
