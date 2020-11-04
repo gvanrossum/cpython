@@ -125,11 +125,10 @@ class ExceptionGroup(BaseException):
     def format(exc, **kwargs):
         result = []
         summary = StackGroupSummary.extract(exc, **kwargs)
-        for indent, exc_str, stack in summary:
-            prefix = ' '*indent
-            result.append(f"{prefix}{exc_str}:")
-            stack = traceback.StackSummary.format(stack)
-            result.extend([textwrap.indent(l.rstrip(), prefix) for l in stack])
+        for indent, traceback_exception in summary:
+            stack = traceback_exception.format()
+            result.extend(
+                [textwrap.indent(l.rstrip(), ' '*indent) for l in stack])
         return result
 
     @staticmethod
@@ -160,19 +159,16 @@ class ExceptionGroup(BaseException):
 
 class StackGroupSummary(list):
     @classmethod
-    def extract(klass, exc, *, indent=0, result=None,
-                limit=None, lookup_lines=True, capture_locals=False):
+    def extract(klass, exc, *, indent=0, result=None, **kwargs):
 
         if result is None:
             result = klass()
-        result.append([
-            indent,
-            f"{exc!r}",
-            traceback.extract_tb(exc.__traceback__, limit=limit)])
+        te = traceback.TracebackException.from_exception(exc, **kwargs)
+        result.append([indent, te])
         if isinstance(exc, ExceptionGroup):
             for e in exc.excs:
                 StackGroupSummary.extract(
-                    e, indent=indent+4, result=result, limit=limit)
+                    e, indent=indent+4, result=result, **kwargs)
         return result
 
 class ExceptionGroupCatcher:

@@ -5,7 +5,6 @@ import traceback
 import unittest
 from exception_group import ExceptionGroup, TracebackGroup, StackGroupSummary
 from io import StringIO
-import re
 
 class ExceptionGroupTestBase(unittest.TestCase):
 
@@ -150,7 +149,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 
 
 class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
-    def test_stack_summary_simple(self):
+    def test_simple(self):
         bind = functools.partial
         eg = self.newEG(
             [bind(self.newVE, 1),
@@ -158,38 +157,35 @@ class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
              bind(self.newVE, 2),
             ], message='hello world')
 
-        summary = StackGroupSummary.extract(eg)
-        self.assertEqual(4, len(summary))
-        indents   = [e[0] for e in summary]
-        exc_reprs = [e[1] for e in summary]
-        frames    = [e[2] for e in summary]
-        expected = [
-            [0, eg, ['newEG']],
-            [4, eg.excs[0], ['newEG', 'newVE']],
-            [4, eg.excs[1], ['newEG', 'newTE']],
-            [4, eg.excs[2], ['newEG', 'newVE']],
+        expected = [  # (indent, exception) pairs
+            (0, eg),
+            (4, eg.excs[0]),
+            (4, eg.excs[1]),
+            (4, eg.excs[2]),
         ]
-        self.assertEqual(indents, [e[0] for e in expected])
-        self.assertEqual(exc_reprs, [repr(e[1]) for e in expected])
-        expected_names = [e[2] for e in expected]
-        actual_names = [[f.name for f in frame] for frame in frames]
-        self.assertSequenceEqual(expected_names, actual_names)
 
-        self.check_format_and_render(eg, expected)
+        self.check_summary_format_and_render(eg, expected)
 
-    def check_format_and_render(self, eg, expected):
-        re_arr = ['.*']
-        for e in expected:
-            re_arr.append(type(e[1]).__name__)
-            for name in e[2]:
-                re_arr.append(name)
-        re_arr.append('.*')
-        format_re = re.compile('.*'.join(re_arr), re.MULTILINE | re.DOTALL)
+    def check_summary_format_and_render(self, eg, expected):
+        makeTE = traceback.TracebackException.from_exception
+
+        # StackGroupSummary.extract
+        summary = StackGroupSummary.extract(eg)
+        self.assertEqual(len(expected), len(summary))
+        self.assertEqual([e[0] for e in summary],
+                         [e[0] for e in expected])
+        self.assertEqual([e[1] for e in summary],
+                         [makeTE(e) for e in [e[1] for e in expected]])
+
+        # ExceptionGroup.format
         format_output = ExceptionGroup.format(eg)
-        self.assertRegex(''.join(format_output), format_re)
         render_output = StringIO()
         ExceptionGroup.render(eg, file=render_output)
-        self.assertRegex(''.join(render_output.getvalue()), format_re)
+
+        self.assertIsInstance(format_output, list)
+        self.assertIsInstance(render_output.getvalue(), str)
+        self.assertEqual("".join(format_output).replace('\n',''),
+                         render_output.getvalue().replace('\n',''))
 
     def test_stack_summary_nested(self):
         bind = functools.partial
@@ -212,30 +208,21 @@ class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
             ])
         eg = level3(5)
 
-        summary = StackGroupSummary.extract(eg)
-        self.assertEqual(12, len(summary))
-        indents   = [e[0] for e in summary]
-        exc_reprs = [e[1] for e in summary]
-        frames    = [e[2] for e in summary]
-        expected = [
-            [0, eg, ['newEG']],
-            [4, eg.excs[0], ['newEG', 'raiseExc', 'newEG']],
-            [8, eg.excs[0].excs[0], ['newEG', 'raiseExc', 'newEG']],
-            [12, eg.excs[0].excs[0].excs[0], ['newEG', 'newVE']],
-            [12, eg.excs[0].excs[0].excs[1], ['newEG', 'newTE']],
-            [12, eg.excs[0].excs[0].excs[2], ['newEG', 'newVE']],
-            [8, eg.excs[0].excs[1], ['newEG', 'raiseExc', 'newEG']],
-            [12, eg.excs[0].excs[1].excs[0], ['newEG', 'newVE']],
-            [12, eg.excs[0].excs[1].excs[1], ['newEG', 'newTE']],
-            [12, eg.excs[0].excs[1].excs[2], ['newEG', 'newVE']],
-            [8, eg.excs[0].excs[2], ['newEG', 'newVE']],
-            [4, eg.excs[1], ['newEG', 'newVE']],
+        expected = [  # (indent, exception) pairs
+            (0, eg),
+            (4, eg.excs[0]),
+            (8, eg.excs[0].excs[0]),
+            (12, eg.excs[0].excs[0].excs[0]),
+            (12, eg.excs[0].excs[0].excs[1]),
+            (12, eg.excs[0].excs[0].excs[2]),
+            (8, eg.excs[0].excs[1]),
+            (12, eg.excs[0].excs[1].excs[0]),
+            (12, eg.excs[0].excs[1].excs[1]),
+            (12, eg.excs[0].excs[1].excs[2]),
+            (8, eg.excs[0].excs[2]),
+            (4, eg.excs[1]),
         ]
-        self.assertEqual(indents, [e[0] for e in expected])
-        self.assertEqual(exc_reprs, [repr(e[1]) for e in expected])
-        expected_names = [e[2] for e in expected]
-        actual_names = [[f.name for f in frame] for frame in frames]
-        self.assertSequenceEqual(expected_names, actual_names)
+        self.check_summary_format_and_render(eg, expected)
 
 class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
 
