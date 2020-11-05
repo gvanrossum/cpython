@@ -53,6 +53,30 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
     def newTE(self, t):
         raise TypeError(t)
 
+    def extract_traceback(self, exc, eg):
+        """ returns the traceback of a single exception
+
+        If exc is in the exception group, return its
+        traceback as the concatenation of the outputs
+        of traceback.extract_tb() on each segment of
+        it traceback (one per each ExceptionGroup that
+        it belongs to).
+        """
+        if exc not in eg:
+            return None
+        e = eg.subgroup([exc])
+        result = None
+        while e is not None:
+            if isinstance(e, ExceptionGroup):
+               assert len(e.excs) == 1 and exc in e
+            r = traceback.extract_tb(e.__traceback__)
+            if result is not None:
+                result.extend(r)
+            else:
+                result = r
+            e = e.excs[0] if isinstance(e, ExceptionGroup) else None
+        return result
+
 class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 
     def test_construction_simple(self):
@@ -83,7 +107,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
                 'newEG',
                 'new'+ ''.join(filter(str.isupper, type(e).__name__)),
             ]
-            etb = eg.extract_traceback(e)
+            etb = self.extract_traceback(e, eg)
             self.assertEqual(expected, [f.name for f in etb])
 
     def test_construction_nested(self):
@@ -139,13 +163,13 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
                 'newEG',
                 'new' + ''.join(filter(str.isupper, type(e).__name__)),
             ]
-            etb = eg.extract_traceback(e)
+            etb = self.extract_traceback(e, eg)
             self.assertEqual(expected, [f.name for f in etb])
         self.assertEqual([
             'newEG', 'newEG', 'raiseExc', 'newEG', 'newEG', 'newVE'],
-            [f.name  for f in eg.extract_traceback(all_excs[6])])
+            [f.name  for f in self.extract_traceback(all_excs[6], eg)])
         self.assertEqual(['newEG', 'newEG', 'newVE'],
-            [f.name  for f in eg.extract_traceback(all_excs[7])])
+            [f.name  for f in self.extract_traceback(all_excs[7], eg)])
 
 
 class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
@@ -254,8 +278,8 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
             # check tracebacks
             for e in part:
                 self.assertEqual(
-                    eg.extract_traceback(e),
-                    part.extract_traceback(e))
+                    self.extract_traceback(e, eg),
+                    self.extract_traceback(e, part))
 
         return match, rest
 
@@ -392,9 +416,9 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         self.assertMatchesTemplate(exc, template)
         for e in exc:
             f_data = lambda f: [f.name, f.lineno]
-            new = list(map(f_data, exc.extract_traceback(e)))
+            new = list(map(f_data, self.extract_traceback(e, exc)))
             if e in orig_eg:
-                old = list(map(f_data, orig_eg.extract_traceback(e)))
+                old = list(map(f_data, self.extract_traceback(e, orig_eg)))
                 self.assertSequenceEqual(old, new[-len(old):])
 
     class BaseHandler:

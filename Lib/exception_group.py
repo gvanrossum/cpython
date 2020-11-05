@@ -97,30 +97,6 @@ class ExceptionGroup(BaseException):
         match, _ = self.project(lambda e: e in keep)
         return match
 
-    def extract_traceback(self, exc):
-        """ returns the traceback of a single exception
-
-        If exc is in this exception group, return its
-        traceback as the concatenation of the outputs
-        of traceback.extract_tb() on each segment of
-        it traceback (one per each ExceptionGroup that
-        it belongs to).
-        """
-        if exc not in self:
-            return None
-        e = self.subgroup([exc])
-        result = None
-        while e is not None:
-            if isinstance(e, ExceptionGroup):
-               assert len(e.excs) == 1 and exc in e
-            r = traceback.extract_tb(e.__traceback__)
-            if result is not None:
-                result.extend(r)
-            else:
-                result = r
-            e = e.excs[0] if isinstance(e, ExceptionGroup) else None
-        return result
-
     @staticmethod
     def format(exc, **kwargs):
         result = []
