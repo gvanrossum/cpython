@@ -53,6 +53,42 @@ class ExceptionGroupTestUtils(ExceptionGroupTestBase):
     def newTE(self, t):
         raise TypeError(t)
 
+    def newSimpleEG(self, message=None):
+        bind = functools.partial
+        return self.newEG(
+            [bind(self.newVE, 1),
+             bind(self.newTE, int),
+             bind(self.newVE, 2), ],
+            message=message)
+
+    def newNestedEG(self, arg, message=None):
+        bind = functools.partial
+
+        def level1(i):
+            return self.newEG([
+                bind(self.newVE, i),
+                bind(self.newTE, int),
+                bind(self.newVE, i+1),
+            ])
+
+        def raiseExc(e):
+            raise e
+
+        def level2(i):
+            return self.newEG([
+                bind(raiseExc, level1(i)),
+                bind(raiseExc, level1(i+1)),
+                bind(self.newVE, i+2),
+            ])
+
+        def level3(i):
+            return self.newEG([
+                bind(raiseExc, level2(i+1)),
+                bind(self.newVE, i+2),
+            ])
+
+        return level3(arg)
+
     def extract_traceback(self, exc, eg):
         """ returns the traceback of a single exception
 
@@ -83,11 +119,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
         # create a simple exception group and check that
         # it is constructed as expected
         bind = functools.partial
-        eg = self.newEG(
-            [bind(self.newVE, 1),
-             bind(self.newTE, int),
-             bind(self.newVE, 2), ],
-            message='simple EG')
+        eg = self.newSimpleEG('simple EG')
 
         self.assertEqual(len(eg.excs), 3)
         self.assertMatchesTemplate(
@@ -111,34 +143,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
             self.assertEqual(expected, [f.name for f in etb])
 
     def test_construction_nested(self):
-        # create a nested exception group and check that
-        # it is constructed as expected
-        bind = functools.partial
-
-        def level1(i):
-            return self.newEG([
-                bind(self.newVE, i),
-                bind(self.newTE, int),
-                bind(self.newVE, i+1),
-            ])
-
-        def raiseExc(e):
-            raise e
-
-        def level2(i):
-            return self.newEG([
-                bind(raiseExc, level1(i)),
-                bind(raiseExc, level1(i+1)),
-                bind(self.newVE, i+2),
-            ])
-
-        def level3(i):
-            return self.newEG([
-                bind(raiseExc, level2(i+1)),
-                bind(self.newVE, i+2),
-            ])
-
-        eg = level3(5)
+        eg = self.newNestedEG(5)
 
         self.assertMatchesTemplate(
             eg,
@@ -185,11 +190,7 @@ class ExceptionGroupConstructionTests(ExceptionGroupTestUtils):
 class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
     def test_simple(self):
         bind = functools.partial
-        eg = self.newEG(
-            [bind(self.newVE, 1),
-             bind(self.newTE, int),
-             bind(self.newVE, 2), ],
-            message='hello world')
+        eg = self.newSimpleEG('hello world')
 
         expected = [  # (indent, exception) pairs
             (0, eg),
@@ -222,32 +223,7 @@ class ExceptionGroupRenderTests(ExceptionGroupTestUtils):
                          render_output.getvalue().replace('\n', ''))
 
     def test_stack_summary_nested(self):
-        bind = functools.partial
-
-        def level1(i):
-            return self.newEG([
-                bind(self.newVE, i),
-                bind(self.newTE, int),
-                bind(self.newVE, i+1),
-            ])
-
-        def raiseExc(e):
-            raise e
-
-        def level2(i):
-            return self.newEG([
-                bind(raiseExc, level1(i)),
-                bind(raiseExc, level1(i+1)),
-                bind(self.newVE, i+2),
-            ])
-
-        def level3(i):
-            return self.newEG([
-                bind(raiseExc, level2(i+1)),
-                bind(self.newVE, i+2),
-            ])
-
-        eg = level3(5)
+        eg = self.newNestedEG(15)
 
         expected = [  # (indent, exception) pairs
             (0, eg),
@@ -302,34 +278,8 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
         return match, rest
 
     def test_split_nested(self):
-        # create a nested exception group
-        bind = functools.partial
-
-        def level1(i):
-            return self.newEG([
-                bind(self.newVE, i),
-                bind(self.newTE, int),
-                bind(self.newVE, i+11),
-            ], message='level1')
-
-        def raiseExc(e):
-            raise e
-
-        def level2(i):
-            return self.newEG([
-                bind(raiseExc, level1(i)),
-                bind(raiseExc, level1(i+22)),
-                bind(self.newVE, i+33),
-            ], message='level2')
-
-        def level3(i):
-            return self.newEG([
-                bind(raiseExc, level2(i+44)),
-                bind(self.newVE, i+55),
-            ], message='split me')
-
         try:
-            raise level3(6)
+            raise self.newNestedEG(25)
         except ExceptionGroup as e:
             eg = e
 
@@ -339,21 +289,21 @@ class ExceptionGroupSplitTests(ExceptionGroupTestUtils):
 
         eg_template = [
                         [
-                            [ValueError(50), TypeError(int), ValueError(61)],
-                            [ValueError(72), TypeError(int), ValueError(83)],
-                            ValueError(83),
+                            [ValueError(26), TypeError(int), ValueError(27)],
+                            [ValueError(27), TypeError(int), ValueError(28)],
+                            ValueError(28),
                         ],
-                        ValueError(61)
+                        ValueError(27)
                       ]
         self.assertMatchesTemplate(eg, eg_template)
 
         valueErrors_template = [
                                    [
-                                        [ValueError(50), ValueError(61)],
-                                        [ValueError(72), ValueError(83)],
-                                        ValueError(83),
+                                        [ValueError(26), ValueError(27)],
+                                        [ValueError(27), ValueError(28)],
+                                        ValueError(28),
                                    ],
-                                   ValueError(61)
+                                   ValueError(27)
                                ]
 
         typeErrors_template = [[[TypeError(int)], [TypeError(int)]]]
@@ -386,34 +336,8 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
     def setUp(self):
         super().setUp()
 
-        # create a nested exception group
-        bind = functools.partial
-
-        def level1(i):
-            return self.newEG([
-                bind(self.newVE, i),
-                bind(self.newTE, int),
-                bind(self.newVE, i+10),
-            ])
-
-        def raiseExc(e):
-            raise e
-
-        def level2(i):
-            return self.newEG([
-                bind(raiseExc, level1(i)),
-                bind(raiseExc, level1(i+20)),
-                bind(self.newVE, i+30),
-            ])
-
-        def level3(i):
-            return self.newEG([
-                bind(raiseExc, level2(i+40)),
-                bind(self.newVE, i+50),
-            ], message='nested EG')
-
         try:
-            raise level3(5)
+            raise self.newNestedEG(35)
         except ExceptionGroup as e:
             self.eg = e
 
@@ -424,20 +348,20 @@ class ExceptionGroupCatchTests(ExceptionGroupTestUtils):
         # templates
         self.eg_template = [
             [
-                [ValueError(45), TypeError(int), ValueError(55)],
-                [ValueError(65), TypeError(int), ValueError(75)],
-                ValueError(75),
+                [ValueError(36), TypeError(int), ValueError(37)],
+                [ValueError(37), TypeError(int), ValueError(38)],
+                ValueError(38),
             ],
-            ValueError(55)
+            ValueError(37)
         ]
 
         self.valueErrors_template = [
             [
-                [ValueError(45), ValueError(55)],
-                [ValueError(65), ValueError(75)],
-                ValueError(75),
+                [ValueError(36), ValueError(37)],
+                [ValueError(37), ValueError(38)],
+                ValueError(38),
             ],
-            ValueError(55)
+            ValueError(37)
         ]
 
         self.typeErrors_template = [[[TypeError(int)], [TypeError(int)]]]
