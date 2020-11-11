@@ -6,7 +6,7 @@ import traceback
 
 class TracebackGroup:
     def __init__(self, excs):
-        self.tb_next_map = {} # exception id to tb
+        self.tb_next_map = {}  # exception id to tb
         for e in excs:
             if isinstance(e, ExceptionGroup):
                 for e_ in e.excs:
@@ -19,8 +19,8 @@ class TracebackGroup:
             else:
                 self.tb_next_map[id(e)] = e.__traceback__
 
-class ExceptionGroup(BaseException):
 
+class ExceptionGroup(BaseException):
     def __init__(self, excs, message=None, *, tb=None):
         """ Construct a new ExceptionGroup
 
@@ -54,7 +54,7 @@ class ExceptionGroup(BaseException):
         match = []
         rest = [] if with_complement else None
         for e in self.excs:
-            if isinstance(e, ExceptionGroup): # recurse
+            if isinstance(e, ExceptionGroup):  # recurse
                 e_match, e_rest = e.project(
                     condition, with_complement=with_complement)
                 if not e_match.is_empty():
@@ -68,10 +68,12 @@ class ExceptionGroup(BaseException):
                     rest.append(e)
 
         match_exc = ExceptionGroup(match, tb=self.__traceback__)
+
         def copy_metadata(src, target):
             target.message = src.message
             target.__context__ = src.__context__
             target.__cause__ = src.__cause__
+
         copy_metadata(self, match_exc)
         if with_complement:
             rest_exc = ExceptionGroup(rest, tb=self.__traceback__)
@@ -133,6 +135,7 @@ class ExceptionGroup(BaseException):
     def catch(types, handler):
         return ExceptionGroupCatcher(types, handler)
 
+
 class StackGroupSummary(list):
     @classmethod
     def extract(klass, exc, *, indent=0, result=None, **kwargs):
@@ -146,6 +149,7 @@ class StackGroupSummary(list):
                 StackGroupSummary.extract(
                     e, indent=indent+4, result=result, **kwargs)
         return result
+
 
 class ExceptionGroupCatcher:
     """ Based on trio.MultiErrorCatcher """
@@ -222,4 +226,3 @@ class ExceptionGroupCatcher:
                 _, value, _ = sys.exc_info()
                 assert value is to_raise
                 value.__context__ = old_context
-
