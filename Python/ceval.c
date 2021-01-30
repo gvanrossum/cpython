@@ -3712,10 +3712,32 @@ main_loop:
 
         case TARGET(LOAD_METHOD): {
             /* Designed to work in tandem with CALL_METHOD. */
-            PyObject *name = GETITEM(names, oparg);
             PyObject *obj = TOP();
             PyObject *meth = NULL;
+            PyTypeObject *type = Py_TYPE(obj);
 
+            // OPCACHE_STAT_METHOD_TOTAL();
+            OPCACHE_CHECK();
+            if (co_opcache != NULL && co_opcache->optimized > 0) {
+                _PyOpCodeOpt_LoadMethod *lm = &co_opcache->u.lm;
+                if (type == lm->type && type->tp_version_tag == lm->tp_version_tag) {
+                    // OPCACHE_STAT_METHOD_HIT();
+                        meth = lm->meth;
+                    Py_INCREF(meth);
+                        SET_TOP(meth);
+                        PUSH(obj);  // self
+                        DISPATCH();
+                } else if (type != lm->type) {
+                    // OPCACHE_STAT_METHOD_DEOPT();
+                    OPCACHE_DEOPT();
+                } else if (--co_opcache->optimized <= 0) {
+                    // OPCACHE_STAT_METHOD_DEOPT();
+                    OPCACHE_DEOPT();
+                    }
+                // OPCACHE_STAT_METHOD_MISS();
+            }
+
+            PyObject *name = GETITEM(names, oparg);
             int meth_found = _PyObject_GetMethod(obj, name, &meth);
 
             if (meth == NULL) {
@@ -3729,8 +3751,22 @@ main_loop:
 
                    meth | self | arg1 | ... | argN
                  */
+                Py_INCREF(meth);
                 SET_TOP(meth);
                 PUSH(obj);  // self
+
+                if (co_opcache != NULL &&
+                    type->tp_dictoffset == 0 &&
+                    PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
+                {
+                    // fprintf(stderr, "Optimizing %s\n", type->tp_name);
+                    _PyOpCodeOpt_LoadMethod *lm = &co_opcache->u.lm;
+                        co->co_opcache->optimized = OPCODE_CACHE_MAX_TRIES;
+                    lm->type = type;
+                    lm->tp_version_tag = type->tp_version_tag;
+                    lm->meth = meth;  // Borrowed.
+                    // OPCACHE_STAT_METHOD_OPT();
+                }
             }
             else {
                 /* meth is not an unbound method (but a regular attr, or

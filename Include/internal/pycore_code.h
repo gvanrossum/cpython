@@ -16,10 +16,17 @@ typedef struct {
     unsigned int tp_version_tag;
 } _PyOpCodeOpt_LoadAttr;
 
+typedef struct {
+    PyTypeObject *type;
+    PyObject *meth;
+    unsigned int tp_version_tag;
+} _PyOpCodeOpt_LoadMethod;
+
 struct _PyOpcache {
     union {
         _PyOpcache_LoadGlobal lg;
         _PyOpCodeOpt_LoadAttr la;
+        _PyOpCodeOpt_LoadMethod lm;
     } u;
     char optimized;
 };
