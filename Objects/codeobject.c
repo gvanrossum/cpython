@@ -301,7 +301,6 @@ _PyCode_InitOpcache(PyCodeObject *co)
         unsigned char opcode = _Py_OPCODE(opcodes[i]);
         i++;  // 'i' is now aligned to (next_instr - first_instr)
 
-        // TODO: LOAD_METHOD
         if (opcode == LOAD_GLOBAL || opcode == LOAD_ATTR || opcode == LOAD_METHOD) {
             opts++;
             co->co_opcache_map[i] = (unsigned char)opts;

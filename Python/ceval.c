@@ -3850,9 +3850,9 @@ main_loop:
             if (co_opcache != NULL && co_opcache->optimized > 0) {
                 _PyOpCodeOpt_LoadMethod *lm = &co_opcache->u.lm;
 
-                if (PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG) &&
+                if (type == lm->type &&
                     type->tp_version_tag == lm->tp_version_tag &&
-                    type == lm->type)
+                    PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
                 {
                     assert(lm->meth != NULL);
                     assert(type->tp_dictoffset == 0);
@@ -3862,16 +3862,13 @@ main_loop:
                     SET_TOP(meth);
                     PUSH(obj);
                     DISPATCH();
-                } else if (type != lm->type) {
-                    OPCACHE_STAT_METHOD_DEOPT();
-                    OPCACHE_DEOPT();
-                } else if (--co_opcache->optimized <= 0) {
+                }
+                else if (type != lm->type || --co_opcache->optimized <= 0) {
                     OPCACHE_STAT_METHOD_DEOPT();
                     OPCACHE_DEOPT();
                 }
                 OPCACHE_STAT_METHOD_MISS();
             }
-
 
             PyObject *name = GETITEM(names, oparg);
 
@@ -3892,8 +3889,8 @@ main_loop:
                 PUSH(obj);  // self
 
                 if (co_opcache != NULL &&
-                    PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG) &&
-                    type->tp_dictoffset == 0)
+                    type->tp_dictoffset == 0 &&
+                    PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
                 {
                     _PyOpCodeOpt_LoadMethod *lm = &co_opcache->u.lm;
                     co_opcache->optimized = OPCACHE_MAX_TRIES;
