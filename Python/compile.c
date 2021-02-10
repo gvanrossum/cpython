@@ -6759,7 +6759,11 @@ PyCode_Disassemble(PyObject *arg)
         Py_RETURN_NONE;
     }
 
+    PyCodeAddressRange bounds;
+    _PyCode_InitAddressRange(codeobj, &bounds);
+
     int ext_arg = 0;
+    int lastline = -1;
     for (int iop = 0; iop < len/2; iop++) {
         _Py_CODEUNIT word = code[iop];
         int opcode = word & 0xff;
@@ -6769,6 +6773,12 @@ PyCode_Disassemble(PyObject *arg)
             continue;
         }
         ext_arg = 0;
+
+        _PyCode_CheckLineNumber(iop, &bounds);
+        if (bounds.ar_line != lastline) {
+            lastline = bounds.ar_line;
+            fprintf(stderr, "Line %d\n", lastline);
+        }
         char *prefix = labels[iop*2] ? " >> " : "    ";
         if (HAS_ARG(opcode)) {
             fprintf(stderr, "%s %4d: %s %d\n", prefix, iop*2, opcode_names[opcode], oparg);
