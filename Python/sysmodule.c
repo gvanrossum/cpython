@@ -1973,6 +1973,13 @@ sys__deactivate_opcache_impl(PyObject *module)
 }
 
 
+static PyObject *
+sys_guido(PyObject *self, PyObject *arg)
+{
+    return PyCode_Disassemble(arg);
+}
+
+
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
     SYS_ADDAUDITHOOK_METHODDEF
@@ -2026,6 +2033,7 @@ static PyMethodDef sys_methods[] = {
     SYS_GETANDROIDAPILEVEL_METHODDEF
     SYS_UNRAISABLEHOOK_METHODDEF
     SYS__DEACTIVATE_OPCACHE_METHODDEF
+    {"guido", sys_guido, METH_O, "What guido wants"},
     {NULL,              NULL}           /* sentinel */
 };
 
