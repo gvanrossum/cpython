@@ -63,10 +63,18 @@ def main(opcode_py, outfile='Include/opcode.h'):
             if name == 'POP_EXCEPT': # Special entry for HAVE_ARGUMENT
                 fobj.write("#define %-23s %3d\n" %
                             ('HAVE_ARGUMENT', opcode['HAVE_ARGUMENT']))
+        fobj.write("\n")
         fobj.write("#ifdef NEED_OPCODE_JUMP_TABLES\n")
         write_int_array_from_ops("_PyOpcode_RelativeJump", opcode['hasjrel'], fobj)
         write_int_array_from_ops("_PyOpcode_Jump", opcode['hasjrel'] + opcode['hasjabs'], fobj)
         fobj.write("#endif /* OPCODE_TABLES */\n")
+        fobj.write("\n")
+        fobj.write("#ifdef NEED_OPCODE_NAMES\n")
+        fobj.write("static char *opcode_names[256] = {\n")
+        for name in opcode["opname"]:
+            fobj.write("    \"%s\",\n" % name)
+        fobj.write("};\n")
+        fobj.write("#endif /* NEED_OPCODE_NAMES */\n")
         fobj.write(footer)
 
 

@@ -30,6 +30,7 @@
 #include "code.h"
 #include "symtable.h"
 #define NEED_OPCODE_JUMP_TABLES
+#define NEED_OPCODE_NAMES
 #include "opcode.h"
 #include "wordcode_helpers.h"
 
@@ -6689,4 +6690,95 @@ PyCode_Optimize(PyObject *code, PyObject* Py_UNUSED(consts),
 {
     Py_INCREF(code);
     return code;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Disassembler
+//////////////////////////////////////////////////////////////////////////////
+
+static char *
+find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
+{
+    char *labels = PyObject_Calloc(len, 1);
+    if (labels == NULL) {
+        return NULL;
+    }
+
+    int ext_arg = 0;
+    for (int iop = 0; iop < len/2; iop++) {
+        _Py_CODEUNIT word = code[iop];
+        int opcode = word & 0xff;
+        int oparg = (word >> 8) | ext_arg;
+        if (opcode == EXTENDED_ARG) {
+            ext_arg = oparg << 8;
+            continue;
+        }
+        ext_arg = 0;
+        int target = -1;
+        switch (opcode) {
+            case FOR_ITER:
+            case JUMP_FORWARD:
+            case SETUP_FINALLY:
+            case SETUP_WITH:
+            case SETUP_ASYNC_WITH:
+                target = (iop + 1)*sizeof(_Py_CODEUNIT) + oparg;
+                break;
+            case JUMP_IF_FALSE_OR_POP:
+            case JUMP_IF_TRUE_OR_POP:
+            case JUMP_ABSOLUTE:
+            case POP_JUMP_IF_FALSE:
+            case POP_JUMP_IF_TRUE:
+            case JUMP_IF_NOT_EXC_MATCH:
+                target = oparg;
+                break;
+        }
+        if (0 <= target && target < len) {
+            // fprintf(stderr, "Label at %d\n", (int)target);
+            labels[target] = 1;
+        }
+    }
+
+    return labels;
+}
+
+PyObject *
+PyCode_Disassemble(PyObject *arg)
+{
+    if (!PyCode_Check(arg)) {
+        Py_RETURN_NONE;
+    }
+    PyCodeObject *codeobj = (PyCodeObject *)arg;
+    PyObject *bytecode = codeobj->co_code;   
+    assert(PyBytes_Check(bytecode));
+    Py_ssize_t len = PyBytes_GET_SIZE(bytecode);
+    _Py_CODEUNIT *code = (_Py_CODEUNIT *)PyBytes_AS_STRING(bytecode);
+
+    char *labels = find_labels(code, len);
+    if (labels == NULL) {
+        Py_RETURN_NONE;
+    }
+
+    int ext_arg = 0;
+    for (int iop = 0; iop < len/2; iop++) {
+        _Py_CODEUNIT word = code[iop];
+        int opcode = word & 0xff;
+        int oparg = (word >> 8) | ext_arg;
+        if (opcode == EXTENDED_ARG) {
+            ext_arg = oparg << 8;
+            continue;
+        }
+        ext_arg = 0;
+        char *prefix = labels[iop*2] ? " >> " : "    ";
+        if (HAS_ARG(opcode)) {
+            fprintf(stderr, "%s %4d: %s %d\n", prefix, iop*2, opcode_names[opcode], oparg);
+        } else {
+            fprintf(stderr, "%s %4d: %s\n", prefix, iop*2, opcode_names[opcode]);
+        }
+    }
+    fprintf(stderr, "Done len=%d.\n", (int)len);
+    fflush(stderr);
+
+    PyObject_Free(labels);
+    Py_RETURN_NONE;
 }

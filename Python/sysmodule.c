@@ -1965,6 +1965,13 @@ sys_getandroidapilevel_impl(PyObject *module)
 #endif   /* ANDROID_API_LEVEL */
 
 
+static PyObject *
+sys_guido(PyObject *self, PyObject *arg)
+{
+    return PyCode_Disassemble(arg);
+}
+
+
 
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
@@ -2018,6 +2025,7 @@ static PyMethodDef sys_methods[] = {
     SYS_GET_ASYNCGEN_HOOKS_METHODDEF
     SYS_GETANDROIDAPILEVEL_METHODDEF
     SYS_UNRAISABLEHOOK_METHODDEF
+    {"guido", sys_guido, METH_O, "What guido wants"},
     {NULL,              NULL}           /* sentinel */
 };
 
