@@ -351,11 +351,12 @@ compiler_init(struct compiler *c)
     return 1;
 }
 
-PyCodeObject *
-PyAST_CompileObject(mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
+// Fully initialize a struct compiler.
+static int
+compiler_init_full(struct compiler *c,
+                   mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
                    int optimize, PyArena *arena)
 {
-    struct compiler c;
     PyCodeObject *co = NULL;
     PyCompilerFlags local_flags = _PyCompilerFlags_INIT;
     int merged;
@@ -363,49 +364,64 @@ PyAST_CompileObject(mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
     if (!__doc__) {
         __doc__ = PyUnicode_InternFromString("__doc__");
         if (!__doc__)
-            return NULL;
+            return 0;
     }
     if (!__annotations__) {
         __annotations__ = PyUnicode_InternFromString("__annotations__");
         if (!__annotations__)
-            return NULL;
+            return 0;
     }
-    if (!compiler_init(&c))
-        return NULL;
+    if (!compiler_init(c))
+        return 0;
     Py_INCREF(filename);
-    c.c_filename = filename;
-    c.c_arena = arena;
-    c.c_future = PyFuture_FromASTObject(mod, filename);
-    if (c.c_future == NULL)
+    c->c_filename = filename;
+    c->c_arena = arena;
+    c->c_future = PyFuture_FromASTObject(mod, filename);
+    if (c->c_future == NULL)
         goto finally;
     if (!flags) {
         flags = &local_flags;
     }
-    merged = c.c_future->ff_features | flags->cf_flags;
-    c.c_future->ff_features = merged;
+    merged = c->c_future->ff_features | flags->cf_flags;
+    c->c_future->ff_features = merged;
     flags->cf_flags = merged;
-    c.c_flags = flags;
-    c.c_optimize = (optimize == -1) ? _Py_GetConfig()->optimization_level : optimize;
-    c.c_nestlevel = 0;
+    c->c_flags = flags;
+    c->c_optimize = (optimize == -1) ? _Py_GetConfig()->optimization_level : optimize;
+    c->c_nestlevel = 0;
 
     _PyASTOptimizeState state;
-    state.optimize = c.c_optimize;
+    state.optimize = c->c_optimize;
     state.ff_features = merged;
 
     if (!_PyAST_Optimize(mod, arena, &state)) {
         goto finally;
     }
 
-    c.c_st = PySymtable_BuildObject(mod, filename, c.c_future);
-    if (c.c_st == NULL) {
+    c->c_st = PySymtable_BuildObject(mod, filename, c->c_future);
+    if (c->c_st == NULL) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_SystemError, "no symtable");
         goto finally;
     }
 
-    co = compiler_mod(&c, mod);
+    return 1;
 
  finally:
+    compiler_free(c);
+    return 0;
+}
+
+PyCodeObject *
+PyAST_CompileObject(mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
+                    int optimize, PyArena *arena)
+{
+    struct compiler c;
+
+    if (!compiler_init_full(&c, mod, filename, flags, optimize, arena))
+        return NULL;
+
+    PyCodeObject *co = compiler_mod(&c, mod);
+
     compiler_free(&c);
     assert(co || PyErr_Occurred());
     return co;
@@ -6601,20 +6617,22 @@ makecode(struct compiler *c, struct assembler *a, PyObject *consts)
 
 
 /* For debugging purposes only */
-#if 0
+#if 1
 static void
 dump_instr(const struct instr *i)
 {
-    const char *jrel = (is_relative_jump(instr)) ? "jrel " : "";
-    const char *jabs = (is_jump(instr) && !is_relative_jump(instr))? "jabs " : "";
+    // TODO: Why do these two lines get "different 'const' qualifiers"?
+    // Removing the 'const' doesn't make the error go away.
+    const char *jrel = (is_relative_jump(i)) ? "jrel " : "";
+    const char *jabs = (is_jump(i) && !is_relative_jump(i)) ? "jabs " : "";
     char arg[128];
 
     *arg = '\0';
     if (HAS_ARG(i->i_opcode)) {
         sprintf(arg, "arg: %d ", i->i_oparg);
     }
-    fprintf(stderr, "line: %d, opcode: %d %s%s%s\n",
-                    i->i_lineno, i->i_opcode, arg, jabs, jrel);
+    fprintf(stderr, "line: %d, opcode: %d (%s) %s%s%s\n",
+                    i->i_lineno, i->i_opcode, opcode_names[i->i_opcode], arg, jabs, jrel);
 }
 
 static void
@@ -7391,6 +7409,7 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
     if (labels == NULL) {
         return NULL;
     }
+    labels[0] = 1;  // Enter from top
 
     int ext_arg = 0;
     for (int iop = 0; iop < len/2; iop++) {
@@ -7432,25 +7451,54 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
 PyObject *
 PyCode_Disassemble(PyObject *arg)
 {
+    // Things that need to be freed at 'finally':
+    char *labels = NULL;
+    PyArena *arena = NULL;
+    struct compiler *c = NULL;
+
     if (!PyCode_Check(arg)) {
-        Py_RETURN_NONE;
+        Py_RETURN_NONE;  // TODO: Error
     }
     PyCodeObject *codeobj = (PyCodeObject *)arg;
-    PyObject *bytecode = codeobj->co_code;   
-    assert(PyBytes_Check(bytecode));
+    PyObject *bytecode = codeobj->co_code;
+    if (!PyBytes_Check(bytecode)) {
+        Py_RETURN_NONE;  // TODO: Error
+    }
     Py_ssize_t len = PyBytes_GET_SIZE(bytecode);
     _Py_CODEUNIT *code = (_Py_CODEUNIT *)PyBytes_AS_STRING(bytecode);
 
-    char *labels = find_labels(code, len);
-    if (labels == NULL) {
-        Py_RETURN_NONE;
-    }
+
+    labels = find_labels(code, len);
+    if (!labels)
+        goto finally;
+
+    arena = PyArena_New();
+    if (!arena)
+        goto finally;
+
+    // Construct an empty module object so we can call compiler_init_full().
+    // This requires first creating empty body and type_ignores sequences.
+    asdl_stmt_seq* body = _Py_asdl_stmt_seq_new(0, arena);
+    if (!body)
+        goto finally;
+    asdl_type_ignore_seq* type_ignores = _Py_asdl_type_ignore_seq_new(0, arena);
+    if (!type_ignores)
+        goto finally;
+    mod_ty mod = _Py_Module(body, type_ignores, arena);
+    if (!mod)
+        goto finally;
+
+    // Initialize the compiler sufficiently so we can (ab)use it.
+    struct compiler cc;
+    if (!compiler_init_full(&cc, mod, codeobj->co_filename, NULL, 0, arena))
+        goto finally;
+    c = &cc;
 
     PyCodeAddressRange bounds;
     _PyCode_InitAddressRange(codeobj, &bounds);
 
     int ext_arg = 0;
-    int lastline = -1;
+    int lineno = -1;
     for (int iop = 0; iop < len/2; iop++) {
         _Py_CODEUNIT word = code[iop];
         int opcode = word & 0xff;
@@ -7462,20 +7510,56 @@ PyCode_Disassemble(PyObject *arg)
         ext_arg = 0;
 
         _PyCode_CheckLineNumber(iop, &bounds);
-        if (bounds.ar_line != lastline) {
-            lastline = bounds.ar_line;
-            fprintf(stderr, "Line %d\n", lastline);
+        if (bounds.ar_line != lineno) {
+            lineno = bounds.ar_line;
+            fprintf(stderr, "Line %d\n", lineno);
         }
-        char *prefix = labels[iop*2] ? " >> " : "    ";
+
+        if (lineno >= 0 && !c->u) {
+            if (!compiler_enter_scope(c, codeobj->co_name, COMPILER_SCOPE_MODULE, mod, lineno))
+                goto finally;
+            assert(c->u);
+        }
+        c->u->u_lineno = lineno;
+
+        if (labels[iop*2]) {
+            if (c->u && c->u->u_curblock != NULL) {
+                dump_basicblock(c->u->u_curblock);
+            }
+            compiler_next_block(c);
+        }
+        #define PREFIX (labels[iop*2] ? " >> " : "    ")
         if (HAS_ARG(opcode)) {
-            fprintf(stderr, "%s %4d: %s %d\n", prefix, iop*2, opcode_names[opcode], oparg);
+            fprintf(stderr, "%s %4d: %s %d\n", PREFIX, iop*2, opcode_names[opcode], oparg);
+            // TODO Jumps
+            compiler_addop_i(c, opcode, oparg);
         } else {
-            fprintf(stderr, "%s %4d: %s\n", prefix, iop*2, opcode_names[opcode]);
+            fprintf(stderr, "%s %4d: %s\n", PREFIX, iop*2, opcode_names[opcode]);
+            compiler_addop(c, opcode);
         }
+        #undef PREFIX
     }
+
+    if (c->u && c->u->u_curblock != NULL) {
+        dump_basicblock(c->u->u_curblock);
+    }
+
     fprintf(stderr, "Done len=%d.\n", (int)len);
     fflush(stderr);
 
-    PyObject_Free(labels);
+    if (c->u) {
+        compiler_exit_scope(c);
+    }
+
+    // TODO: Reassemble here.
+
+finally:
+    if (c)
+        compiler_free(c);
+    if (arena)
+        PyArena_Free(arena);
+    if (labels)
+        PyObject_Free(labels);
+
     Py_RETURN_NONE;
 }
