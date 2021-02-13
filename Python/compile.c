@@ -7524,10 +7524,26 @@ PyCode_Disassemble(PyObject *arg)
     int ext_arg = 0;
     int lineno = -1;
     for (int iop = 0; iop < len/2; iop++) {
+
+        #define PREFIX (labels[iop*2] ? " >> " : "    ")
+
+        if (labels[iop*2]) {
+            basicblock *block = c->u->u_curblock;
+            if (block->b_iused) {
+                dump_basicblock(c->u->u_curblock);
+                block = compiler_next_block(c);
+                if (!block)
+                    goto finally;
+                block->b_offset = iop;
+                block_starts[iop * 2] = block;
+            }
+        }
+
         _Py_CODEUNIT word = code[iop];
         int opcode = word & 0xff;
         int oparg = (word >> 8) | ext_arg;
         if (opcode == EXTENDED_ARG) {
+            fprintf(stderr, "%s %4d: EXTENDED_ARG %d\n", PREFIX, iop*2, oparg);
             ext_arg = oparg << 8;
             continue;
         }
@@ -7539,20 +7555,6 @@ PyCode_Disassemble(PyObject *arg)
             fprintf(stderr, "Line %d\n", lineno);
         }
         c->u->u_lineno = lineno;
-
-        if (labels[iop*2]) {
-            basicblock *block = c->u->u_curblock;
-            if (block->b_iused) {
-                dump_basicblock(c->u->u_curblock);
-                block = compiler_next_block(c);
-                if (!block)
-                    goto finally;
-                block->b_offset = iop;
-                block_starts[iop*2] = block;
-            }
-        }
-
-        #define PREFIX (labels[iop*2] ? " >> " : "    ")
 
         if (HAS_ARG(opcode)) {
             fprintf(stderr, "%s %4d: %s %d\n", PREFIX, iop*2, opcode_names[opcode], oparg);
@@ -7597,6 +7599,10 @@ PyCode_Disassemble(PyObject *arg)
             if (is_jump(instr)) {
                 // Note: oparg of relative jumps has been adjusted to absolute above!
                 int dest = instr->i_oparg;
+                if (block_starts[dest] == NULL) {
+                    fprintf(stderr, "ERROR!\n");
+                    dump_instr(instr);
+                }
                 assert(block_starts[dest] != NULL);
                 instr->i_target = block_starts[dest];
             }
