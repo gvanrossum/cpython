@@ -7461,6 +7461,19 @@ is_relative_jump_op(int opcode)
     return is_bit_set_in_table(_PyOpcode_RelativeJump, opcode);
 }
 
+static int
+add_things(PyObject *co_things, PyObject *u_things)
+{
+    if (co_things && PyTuple_CheckExact(co_things)) {
+        for (int i = 0; i < PyTuple_GET_SIZE(co_things); i++) {
+            PyObject *item = PyTuple_GET_ITEM(co_things, i);
+            if (compiler_add_o(u_things, item) < 0)
+                return 0;
+        }
+    }
+    return 1;
+}
+
 // TODO: Use more small helper functions.
 PyObject *
 PyCode_Disassemble(PyObject *arg)
@@ -7602,7 +7615,15 @@ PyCode_Disassemble(PyObject *arg)
         }
     }
 
-	// TODO: Fill in names, constants etc.
+	// Fill in consts, names, etc.
+    if (!add_things(codeobj->co_consts, c->u->u_consts) ||
+        !add_things(codeobj->co_names, c->u->u_names) ||
+        !add_things(codeobj->co_varnames, c->u->u_varnames) ||
+        !add_things(codeobj->co_cellvars, c->u->u_cellvars) ||
+        !add_things(codeobj->co_freevars, c->u->u_freevars))
+    {
+        goto finally;
+    }
 
     co = assemble(c, 0);
 
