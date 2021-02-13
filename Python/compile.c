@@ -7545,7 +7545,7 @@ PyCode_Disassemble(PyObject *arg)
         }
         ext_arg = 0;
 
-        _PyCode_CheckLineNumber(iop, &bounds);
+        _PyCode_CheckLineNumber(iop*2, &bounds);
         if (bounds.ar_line != lineno) {
             lineno = bounds.ar_line;
             fprintf(stderr, "Line %d\n", lineno);
