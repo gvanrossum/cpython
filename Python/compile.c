@@ -70,13 +70,26 @@ is_bit_set_in_table(uint32_t *table, int bitindex) {
 }
 
 static inline int
-is_relative_jump(struct instr *i)
+is_relative_jump_op(int opcode)
+{
+    return is_bit_set_in_table(_PyOpcode_RelativeJump, opcode);
+}
+
+static inline int
+is_jump_op(int opcode)
+{
+    return is_bit_set_in_table(_PyOpcode_Jump, opcode);
+}
+
+// TODO: Call the above two here?
+static inline int
+is_relative_jump(const struct instr *i)
 {
     return is_bit_set_in_table(_PyOpcode_RelativeJump, i->i_opcode);
 }
 
 static inline int
-is_jump(struct instr *i)
+is_jump(const struct instr *i)
 {
     return is_bit_set_in_table(_PyOpcode_Jump, i->i_opcode);
 }
@@ -6621,8 +6634,6 @@ makecode(struct compiler *c, struct assembler *a, PyObject *consts)
 static void
 dump_instr(const struct instr *i)
 {
-    // TODO: Why do these two lines get "different 'const' qualifiers"?
-    // Removing the 'const' doesn't make the error go away.
     const char *jrel = (is_relative_jump(i)) ? "jrel " : "";
     const char *jabs = (is_jump(i) && !is_relative_jump(i)) ? "jabs " : "";
     char arg[128];
@@ -7420,45 +7431,17 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
             continue;
         }
         ext_arg = 0;
-        // TODO: Use is_jump_op(), is_relative_jump_op().
-        int target = -1;
-        switch (opcode) {
-            case FOR_ITER:
-            case JUMP_FORWARD:
-            case SETUP_FINALLY:
-            case SETUP_WITH:
-            case SETUP_ASYNC_WITH:
-                target = (iop + 1)*sizeof(_Py_CODEUNIT) + oparg;
-                break;
-            case JUMP_IF_FALSE_OR_POP:
-            case JUMP_IF_TRUE_OR_POP:
-            case JUMP_ABSOLUTE:
-            case POP_JUMP_IF_FALSE:
-            case POP_JUMP_IF_TRUE:
-            case JUMP_IF_NOT_EXC_MATCH:
-                target = oparg;
-                break;
-        }
-        if (0 <= target && target < len) {
-            // fprintf(stderr, "Label at %d\n", (int)target);
+        if (is_jump_op(opcode)) {
+            Py_ssize_t target = oparg;
+            if (is_relative_jump_op(opcode)) {
+                target += (iop + 1)*sizeof(_Py_CODEUNIT);
+            }
+            assert (0 <= target && target < len);
             labels[target] = 1;
         }
     }
 
     return labels;
-}
-
-// TODO: Refactor to merge these with is_jump() and is_jump_op()
-static int
-is_jump_op(int opcode)
-{
-    return is_bit_set_in_table(_PyOpcode_Jump, opcode);
-}
-
-static int
-is_relative_jump_op(int opcode)
-{
-    return is_bit_set_in_table(_PyOpcode_RelativeJump, opcode);
 }
 
 static int
@@ -7467,7 +7450,12 @@ add_things(PyObject *co_things, PyObject *u_things)
     if (co_things && PyTuple_CheckExact(co_things)) {
         for (int i = 0; i < PyTuple_GET_SIZE(co_things); i++) {
             PyObject *item = PyTuple_GET_ITEM(co_things, i);
-            if (compiler_add_o(u_things, item) < 0)
+            PyObject *key = _PyCode_ConstantKey(item);
+            if (!key)
+                return 0;
+            Py_ssize_t res = compiler_add_o(u_things, key);
+            Py_DECREF(key);
+            if (res < 0)
                 return 0;
         }
     }
