@@ -6722,7 +6722,6 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
     if (labels == NULL) {
         return NULL;
     }
-    labels[0] = 1;  // Enter from top
 
     int ext_arg = 0;
     for (int iop = 0; iop < len/2; iop++) {
@@ -6734,6 +6733,7 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
             continue;
         }
         ext_arg = 0;
+        // TODO: Use is_jump_op(), is_relative_jump_op().
         int target = -1;
         switch (opcode) {
             case FOR_ITER:
@@ -6761,13 +6761,29 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
     return labels;
 }
 
+// TODO: Refactor to merge these with is_jump() and is_jump_op()
+static int
+is_jump_op(int opcode)
+{
+    return is_bit_set_in_table(_PyOpcode_Jump, opcode);
+}
+
+static int
+is_relative_jump_op(int opcode)
+{
+    return is_bit_set_in_table(_PyOpcode_RelativeJump, opcode);
+}
+
+// TODO: Use more small helper functions.
 PyObject *
 PyCode_Disassemble(PyObject *arg)
 {
-    // Things that need to be freed at 'finally':
+    // Things that need to be alive or freed at 'finally':
+    PyCodeObject *co = NULL;
     char *labels = NULL;
     PyArena *arena = NULL;
     struct compiler *c = NULL;
+    basicblock **block_starts = NULL;
 
     if (!PyCode_Check(arg)) {
         Py_RETURN_NONE;  // TODO: Error
@@ -6807,8 +6823,15 @@ PyCode_Disassemble(PyObject *arg)
         goto finally;
     c = &cc;
 
+    block_starts = PyObject_Calloc(len, sizeof(basicblock *));
+    if (!block_starts)
+        goto finally;
+
     PyCodeAddressRange bounds;
     _PyCode_InitAddressRange(codeobj, &bounds);
+
+    if (!compiler_enter_scope(c, codeobj->co_name, COMPILER_SCOPE_MODULE, mod, bounds.ar_line))
+        goto finally;
 
     int ext_arg = 0;
     int lineno = -1;
@@ -6827,46 +6850,80 @@ PyCode_Disassemble(PyObject *arg)
             lineno = bounds.ar_line;
             fprintf(stderr, "Line %d\n", lineno);
         }
-
-        if (lineno >= 0 && !c->u) {
-            if (!compiler_enter_scope(c, codeobj->co_name, COMPILER_SCOPE_MODULE, mod, lineno))
-                goto finally;
-            assert(c->u);
-        }
         c->u->u_lineno = lineno;
 
         if (labels[iop*2]) {
-            if (c->u && c->u->u_curblock != NULL) {
+            basicblock *block = c->u->u_curblock;
+            if (block->b_iused) {
                 dump_basicblock(c->u->u_curblock);
+                block = compiler_next_block(c);
+                if (!block)
+                    goto finally;
+                block->b_offset = iop;
+                block_starts[iop*2] = block;
             }
-            compiler_next_block(c);
         }
+
         #define PREFIX (labels[iop*2] ? " >> " : "    ")
+
         if (HAS_ARG(opcode)) {
             fprintf(stderr, "%s %4d: %s %d\n", PREFIX, iop*2, opcode_names[opcode], oparg);
-            // TODO Jumps
-            compiler_addop_i(c, opcode, oparg);
+            if (is_relative_jump_op(opcode)) {
+                // Make relative jump args absolute, so we can fill in i_target below.
+                // The assembler reconstructs oparg from i_target.
+                oparg += (iop+1)*2;
+            }
+            if (!compiler_addop_i(c, opcode, oparg))
+                goto finally;
         } else {
             fprintf(stderr, "%s %4d: %s\n", PREFIX, iop*2, opcode_names[opcode]);
-            compiler_addop(c, opcode);
+            if (!compiler_addop(c, opcode))
+                goto finally;
         }
+
         #undef PREFIX
+
+        if (is_jump_op(opcode)) {
+            // Always start a new block after a jump opcode.
+            dump_basicblock(c->u->u_curblock);
+            basicblock *block = compiler_next_block(c);
+            if (!block)
+                goto finally;
+            block->b_offset = iop+1;
+            block_starts[(iop+1)*2] = c->u->u_curblock;
+        }
     }
 
-    if (c->u && c->u->u_curblock != NULL) {
+    // Dump the final basic block.
+    if (c->u->u_curblock->b_iused) {
         dump_basicblock(c->u->u_curblock);
     }
 
     fprintf(stderr, "Done len=%d.\n", (int)len);
     fflush(stderr);
 
-    if (c->u) {
-        compiler_exit_scope(c);
+    // Fill in i_target for jump instructions.
+    for (basicblock *b = c->u->u_blocks; b != NULL; b = b->b_list) {
+        for (int i = 0; i < b->b_iused; i++) {
+            struct instr *instr = &b->b_instr[i];
+            if (is_jump(instr)) {
+                // Note: oparg of relative jumps has been adjusted to absolute above!
+                int dest = instr->i_oparg;
+                assert(block_starts[dest] != NULL);
+                instr->i_target = block_starts[dest];
+            }
+        }
     }
 
-    // TODO: Reassemble here.
+	// TODO: Fill in names, constants etc.
+
+    co = assemble(c, 0);
+
+    compiler_exit_scope(c);
 
 finally:
+    if (block_starts)
+        PyObject_Free(block_starts);
     if (c)
         compiler_free(c);
     if (arena)
@@ -6874,5 +6931,5 @@ finally:
     if (labels)
         PyObject_Free(labels);
 
-    Py_RETURN_NONE;
+    return (PyObject *)co;
 }
