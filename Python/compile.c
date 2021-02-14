@@ -7414,30 +7414,34 @@ PyCode_Optimize(PyObject *code, PyObject* Py_UNUSED(consts),
 //////////////////////////////////////////////////////////////////////////////
 
 static char *
-find_labels(_Py_CODEUNIT *code, Py_ssize_t len)
+find_labels(_Py_CODEUNIT *code, Py_ssize_t codesize)
 {
-    char *labels = PyObject_Calloc(len, 1);
+    // Allocate one extra so we don't need a range check (see below).
+    char *labels = PyObject_Calloc(codesize + 1, sizeof(char));
     if (labels == NULL) {
         return NULL;
     }
 
     int ext_arg = 0;
-    for (int iop = 0; iop < len/2; iop++) {
+    for (int iop = 0; iop < codesize; iop++) {
         _Py_CODEUNIT word = code[iop];
-        int opcode = word & 0xff;
-        int oparg = (word >> 8) | ext_arg;
+        int opcode = _Py_OPCODE(word);
+        int oparg = _Py_OPARG(word) | ext_arg;
         if (opcode == EXTENDED_ARG) {
             ext_arg = oparg << 8;
             continue;
         }
         ext_arg = 0;
         if (is_jump_op(opcode)) {
-            Py_ssize_t target = oparg;
+            Py_ssize_t target = oparg / sizeof(_Py_CODEUNIT);
             if (is_relative_jump_op(opcode)) {
-                target += (iop + 1)*sizeof(_Py_CODEUNIT);
+                target += iop + 1;
             }
-            assert (0 <= target && target < len);
+            assert (0 <= target && target < codesize);
             labels[target] = 1;
+            // Also start a new block after the jump.
+            // (This is why we allocate an extra byte.)
+            labels[iop + 1] = 1;
         }
     }
 
@@ -7482,10 +7486,10 @@ PyCode_Disassemble(PyObject *arg)
         Py_RETURN_NONE;  // TODO: Error
     }
     Py_ssize_t len = PyBytes_GET_SIZE(bytecode);
+    Py_ssize_t codesize = len / sizeof(_Py_CODEUNIT);
     _Py_CODEUNIT *code = (_Py_CODEUNIT *)PyBytes_AS_STRING(bytecode);
 
-
-    labels = find_labels(code, len);
+    labels = find_labels(code, codesize);
     if (!labels)
         goto finally;
 
@@ -7511,7 +7515,7 @@ PyCode_Disassemble(PyObject *arg)
         goto finally;
     c = &cc;
 
-    block_starts = PyObject_Calloc(len, sizeof(basicblock *));
+    block_starts = PyObject_Calloc(codesize, sizeof(basicblock *));
     if (!block_starts)
         goto finally;
 
@@ -7523,11 +7527,11 @@ PyCode_Disassemble(PyObject *arg)
 
     int ext_arg = 0;
     int lineno = -1;
-    for (int iop = 0; iop < len/2; iop++) {
+    for (int iop = 0; iop < codesize; iop++) {
 
-        #define PREFIX (labels[iop*2] ? " >> " : "    ")
+        #define PREFIX (labels[iop] ? " >> " : "    ")
 
-        if (labels[iop*2]) {
+        if (labels[iop]) {
             basicblock *block = c->u->u_curblock;
             if (block->b_iused) {
                 dump_basicblock(c->u->u_curblock);
@@ -7535,21 +7539,21 @@ PyCode_Disassemble(PyObject *arg)
                 if (!block)
                     goto finally;
                 block->b_offset = iop;
-                block_starts[iop * 2] = block;
+                block_starts[iop] = block;
             }
         }
 
         _Py_CODEUNIT word = code[iop];
-        int opcode = word & 0xff;
-        int oparg = (word >> 8) | ext_arg;
+        int opcode = _Py_OPCODE(word);
+        int oparg = _Py_OPARG(word) | ext_arg;
         if (opcode == EXTENDED_ARG) {
-            fprintf(stderr, "%s %4d: EXTENDED_ARG %d\n", PREFIX, iop*2, oparg);
+            fprintf(stderr, "%s %4zd: EXTENDED_ARG %d\n", PREFIX, iop * sizeof(_Py_CODEUNIT), oparg);
             ext_arg = oparg << 8;
             continue;
         }
         ext_arg = 0;
 
-        _PyCode_CheckLineNumber(iop*2, &bounds);
+        _PyCode_CheckLineNumber(iop * sizeof(_Py_CODEUNIT), &bounds);
         if (bounds.ar_line != lineno) {
             lineno = bounds.ar_line;
             fprintf(stderr, "Line %d\n", lineno);
@@ -7557,31 +7561,21 @@ PyCode_Disassemble(PyObject *arg)
         c->u->u_lineno = lineno;
 
         if (HAS_ARG(opcode)) {
-            fprintf(stderr, "%s %4d: %s %d\n", PREFIX, iop*2, opcode_names[opcode], oparg);
+            fprintf(stderr, "%s %4zd: %s %d\n", PREFIX, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode], oparg);
             if (is_relative_jump_op(opcode)) {
                 // Make relative jump args absolute, so we can fill in i_target below.
                 // The assembler reconstructs oparg from i_target.
-                oparg += (iop+1)*2;
+                oparg += (iop + 1) * sizeof(_Py_CODEUNIT);
             }
             if (!compiler_addop_i(c, opcode, oparg))
                 goto finally;
         } else {
-            fprintf(stderr, "%s %4d: %s\n", PREFIX, iop*2, opcode_names[opcode]);
+            fprintf(stderr, "%s %4zd: %s\n", PREFIX, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode]);
             if (!compiler_addop(c, opcode))
                 goto finally;
         }
 
         #undef PREFIX
-
-        if (is_jump_op(opcode)) {
-            // Always start a new block after a jump opcode.
-            dump_basicblock(c->u->u_curblock);
-            basicblock *block = compiler_next_block(c);
-            if (!block)
-                goto finally;
-            block->b_offset = iop+1;
-            block_starts[(iop+1)*2] = c->u->u_curblock;
-        }
     }
 
     // Dump the final basic block.
@@ -7598,7 +7592,7 @@ PyCode_Disassemble(PyObject *arg)
             struct instr *instr = &b->b_instr[i];
             if (is_jump(instr)) {
                 // Note: oparg of relative jumps has been adjusted to absolute above!
-                int dest = instr->i_oparg;
+                int dest = instr->i_oparg / sizeof(_Py_CODEUNIT);
                 if (block_starts[dest] == NULL) {
                     fprintf(stderr, "ERROR!\n");
                     dump_instr(instr);
