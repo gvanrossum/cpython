@@ -1490,6 +1490,11 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             if (_PyCode_InitOpcache(co) < 0) {
                 goto exit_eval_frame;
             }
+            if (co->co_argcount > 0) {
+                if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
+                    goto exit_eval_frame;
+                }
+            }
 #if OPCACHE_STATS
             opcache_code_objects_extra_mem +=
                 PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT) +

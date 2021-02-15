@@ -354,9 +354,10 @@ compiler_init(struct compiler *c)
     return 1;
 }
 
-// Fully initialize a struct compiler.
+// Initialize the rest of a struct compiler.
+// Caller is responsible for calling compiler_init() and compiler_free().
 static int
-compiler_init_full(struct compiler *c,
+compiler_init_rest(struct compiler *c,
                    mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
                    int optimize, PyArena *arena)
 {
@@ -374,14 +375,12 @@ compiler_init_full(struct compiler *c,
         if (!__annotations__)
             return 0;
     }
-    if (!compiler_init(c))
-        return 0;
     Py_INCREF(filename);
     c->c_filename = filename;
     c->c_arena = arena;
     c->c_future = PyFuture_FromASTObject(mod, filename);
     if (c->c_future == NULL)
-        goto finally;
+        return 0;
     if (!flags) {
         flags = &local_flags;
     }
@@ -397,21 +396,17 @@ compiler_init_full(struct compiler *c,
     state.ff_features = merged;
 
     if (!_PyAST_Optimize(mod, arena, &state)) {
-        goto finally;
+        return 0;
     }
 
     c->c_st = PySymtable_BuildObject(mod, filename, c->c_future);
     if (c->c_st == NULL) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_SystemError, "no symtable");
-        goto finally;
+        return 0;
     }
 
     return 1;
-
- finally:
-    compiler_free(c);
-    return 0;
 }
 
 PyCodeObject *
@@ -419,12 +414,12 @@ PyAST_CompileObject(mod_ty mod, PyObject *filename, PyCompilerFlags *flags,
                     int optimize, PyArena *arena)
 {
     struct compiler c;
-
-    if (!compiler_init_full(&c, mod, filename, flags, optimize, arena))
+    if (!compiler_init(&c))
         return NULL;
-
-    PyCodeObject *co = compiler_mod(&c, mod);
-
+    PyCodeObject *co = NULL;
+    if (compiler_init_rest(&c, mod, filename, flags, optimize, arena)) {
+        co = compiler_mod(&c, mod);
+    }
     compiler_free(&c);
     assert(co || PyErr_Occurred());
     return co;
@@ -6783,25 +6778,43 @@ add_things(PyObject *co_things, PyObject *u_things)
     return 1;
 }
 
+// Construct an empty module object so we can call compiler_init_rest().
+// This requires first creating empty body and type_ignores sequences.
+mod_ty
+make_dummy_module(PyArena *arena)
+{
+    asdl_stmt_seq* body = _Py_asdl_stmt_seq_new(0, arena);
+    if (!body)
+        return NULL;
+    asdl_type_ignore_seq* type_ignores = _Py_asdl_type_ignore_seq_new(0, arena);
+    if (!type_ignores)
+        return NULL;
+    return _Py_Module(body, type_ignores, arena);
+}
+
+// Disassemble a code object.
+// Pass in an uninitalized struct compiler and a code object.
+// Output is in fully initialized struct compiler, if result is 1.
+// Returns 0 and sets an exception on failure of any kind.
+// On success, the caller must eventually call compiler_exit_scope(c)
+// or compiler_unit_free(c->u), and PyArena_Free(c->c_arena).
+// followed by compiler_free(c).
 // TODO: Use more small helper functions.
-PyObject *
-PyCode_Disassemble(PyObject *arg)
+static int
+disassemble(struct compiler *c, PyCodeObject *codeobj)
 {
     // Things that need to be alive or freed at 'finally':
-    PyCodeObject *co = NULL;
-    char *labels = NULL;
     PyArena *arena = NULL;
-    struct compiler *c = NULL;
+    char *labels = NULL;
     basicblock **block_starts = NULL;
+    int res = 0;
 
-    if (!PyCode_Check(arg)) {
-        Py_RETURN_NONE;  // TODO: Error
-    }
-    PyCodeObject *codeobj = (PyCodeObject *)arg;
     PyObject *bytecode = codeobj->co_code;
     if (!PyBytes_Check(bytecode)) {
-        Py_RETURN_NONE;  // TODO: Error
+        PyErr_SetString(PyExc_TypeError, "co_code passed is not bytes");
+        return -1;
     }
+
     Py_ssize_t len = PyBytes_GET_SIZE(bytecode);
     Py_ssize_t codesize = len / sizeof(_Py_CODEUNIT);
     _Py_CODEUNIT *code = (_Py_CODEUNIT *)PyBytes_AS_STRING(bytecode);
@@ -6814,23 +6827,12 @@ PyCode_Disassemble(PyObject *arg)
     if (!arena)
         goto finally;
 
-    // Construct an empty module object so we can call compiler_init_full().
-    // This requires first creating empty body and type_ignores sequences.
-    asdl_stmt_seq* body = _Py_asdl_stmt_seq_new(0, arena);
-    if (!body)
-        goto finally;
-    asdl_type_ignore_seq* type_ignores = _Py_asdl_type_ignore_seq_new(0, arena);
-    if (!type_ignores)
-        goto finally;
-    mod_ty mod = _Py_Module(body, type_ignores, arena);
+    mod_ty mod = make_dummy_module(arena);
     if (!mod)
         goto finally;
 
-    // Initialize the compiler sufficiently so we can (ab)use it.
-    struct compiler cc;
-    if (!compiler_init_full(&cc, mod, codeobj->co_filename, NULL, 0, arena))
+    if (!compiler_init_rest(c, mod, codeobj->co_filename, NULL, 0, arena))
         goto finally;
-    c = &cc;
 
     block_starts = PyObject_Calloc(codesize, sizeof(basicblock *));
     if (!block_starts)
@@ -6931,19 +6933,70 @@ PyCode_Disassemble(PyObject *arg)
         goto finally;
     }
 
-    co = assemble(c, 0);
-
-    compiler_exit_scope(c);
+    res = 1;
 
 finally:
     if (block_starts)
         PyObject_Free(block_starts);
-    if (c)
-        compiler_free(c);
-    if (arena)
-        PyArena_Free(arena);
     if (labels)
         PyObject_Free(labels);
+    if (arena && !res) {
+        PyArena_Free(arena);
+        c->c_arena = NULL;
+    }
+
+    return res;
+}
+
+PyObject *
+_PyCode_Disassemble(PyObject *arg)
+{
+    if (!PyCode_Check(arg)) {
+        PyErr_SetString(PyExc_TypeError, "expected a code object");
+        return NULL;
+    }
+
+    struct compiler cc;
+    if (!compiler_init(&cc)) {
+        return NULL;
+    }
+    if (!disassemble(&cc, (PyCodeObject *)arg)) {
+        compiler_free(&cc);
+        return NULL;
+    }
+
+    PyCodeObject *co = assemble(&cc, 0);
+
+    compiler_exit_scope(&cc);
+    compiler_free(&cc);
+    PyArena_Free(cc.c_arena);
 
     return (PyObject *)co;
+}
+
+// 0 on success, -1 on failure
+int
+_PyCode_Optimize(PyCodeObject *co, PyObject *self)
+{
+    // Conditions to optimize:
+    // - It's a method and has 'self'
+    // - There are no assignments to 'self'
+    // - The actual argument given is a class with slots
+    // - At least one of the slots is used in LOAD_ATTR
+    // But we'll take a simpler requirement instead:
+    // - There's at least one argument
+    // And that's already checked by the caller
+    assert(co->co_argcount > 0);
+
+    struct compiler cc;
+    if (!compiler_init(&cc)) {
+        return -1;
+    }
+    if (!disassemble(&cc, co)) {
+        return -1;
+    }
+
+    PyTypeObject *type = self->ob_type;
+
+    return 0;
 }

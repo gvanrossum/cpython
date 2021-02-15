@@ -1968,7 +1968,7 @@ sys_getandroidapilevel_impl(PyObject *module)
 static PyObject *
 sys_guido(PyObject *self, PyObject *arg)
 {
-    return PyCode_Disassemble(arg);
+    return _PyCode_Disassemble(arg);
 }
 
 
