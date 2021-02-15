@@ -91,7 +91,8 @@ typedef struct {
 
 PyAPI_FUNC(int) _PyAST_Optimize(struct _mod *, PyArena *arena, _PyASTOptimizeState *state);
 
-PyAPI_FUNC(PyObject *) PyCode_Disassemble(PyObject *);
+PyAPI_FUNC(PyObject *) _PyCode_Disassemble(PyObject *);
+int _PyCode_Optimize(PyCodeObject *, PyObject *);
 
 #ifdef __cplusplus
 }
