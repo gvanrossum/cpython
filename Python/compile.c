@@ -7413,6 +7413,8 @@ PyCode_Optimize(PyObject *code, PyObject* Py_UNUSED(consts),
 // Disassembler
 //////////////////////////////////////////////////////////////////////////////
 
+enum { UNLABELED=0, IS_TARGET=1, AFTER_JUMP=2 } labeling;
+
 static char *
 find_labels(_Py_CODEUNIT *code, Py_ssize_t codesize)
 {
@@ -7438,10 +7440,12 @@ find_labels(_Py_CODEUNIT *code, Py_ssize_t codesize)
                 target += iop + 1;
             }
             assert (0 <= target && target < codesize);
-            labels[target] = 1;
+            labels[target] = IS_TARGET;
             // Also start a new block after the jump.
             // (This is why we allocate an extra byte.)
-            labels[iop + 1] = 1;
+            if (!labels[iop + 1]) {
+                labels[iop + 1] = AFTER_JUMP;
+            }
         }
     }
 
@@ -7528,8 +7532,11 @@ PyCode_Disassemble(PyObject *arg)
     int ext_arg = 0;
     int lineno = -1;
     for (int iop = 0; iop < codesize; iop++) {
-
-        #define PREFIX (labels[iop] ? " >> " : "    ")
+        int lbl = labels[iop];
+        char *prefix =
+                lbl == IS_TARGET ? " >> " :
+                lbl == AFTER_JUMP ? " .. " :
+                "    ";
 
         if (labels[iop]) {
             basicblock *block = c->u->u_curblock;
@@ -7547,7 +7554,7 @@ PyCode_Disassemble(PyObject *arg)
         int opcode = _Py_OPCODE(word);
         int oparg = _Py_OPARG(word) | ext_arg;
         if (opcode == EXTENDED_ARG) {
-            fprintf(stderr, "%s %4zd: EXTENDED_ARG %d\n", PREFIX, iop * sizeof(_Py_CODEUNIT), oparg);
+            fprintf(stderr, "%s %4zd: EXTENDED_ARG %d\n", prefix, iop * sizeof(_Py_CODEUNIT), oparg);
             ext_arg = oparg << 8;
             continue;
         }
@@ -7561,7 +7568,7 @@ PyCode_Disassemble(PyObject *arg)
         c->u->u_lineno = lineno;
 
         if (HAS_ARG(opcode)) {
-            fprintf(stderr, "%s %4zd: %s %d\n", PREFIX, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode], oparg);
+            fprintf(stderr, "%s %4zd: %s %d\n", prefix, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode], oparg);
             if (is_relative_jump_op(opcode)) {
                 // Make relative jump args absolute, so we can fill in i_target below.
                 // The assembler reconstructs oparg from i_target.
@@ -7570,12 +7577,10 @@ PyCode_Disassemble(PyObject *arg)
             if (!compiler_addop_i(c, opcode, oparg))
                 goto finally;
         } else {
-            fprintf(stderr, "%s %4zd: %s\n", PREFIX, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode]);
+            fprintf(stderr, "%s %4zd: %s\n", prefix, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode]);
             if (!compiler_addop(c, opcode))
                 goto finally;
         }
-
-        #undef PREFIX
     }
 
     // Dump the final basic block.
