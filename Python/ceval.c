@@ -3169,6 +3169,33 @@ main_loop:
             DISPATCH();
         }
 
+        // Guido
+
+        case TARGET(TYPE_GUARD): {
+            PyObject *obj = POP();
+            if (obj->ob_type == co->co_the_type && obj->ob_type->tp_version_tag == co->co_the_tag) {
+                DISPATCH();
+            }
+            JUMPTO(oparg);
+            FAST_DISPATCH();
+        }
+
+        case TARGET(LOAD_ATTR_SLOT): {
+            PyObject *owner = TOP();
+            Py_ssize_t offset = oparg;
+            char *addr = (char *)owner + offset;
+            PyObject *res = *(PyObject **)addr;
+            if (res != NULL) {
+                Py_INCREF(res);
+                SET_TOP(res);
+                Py_DECREF(owner);
+                DISPATCH();
+            } else {
+    			PyErr_SetNone(PyExc_AttributeError);  // TODO: Recover attribute name
+                goto error;
+            }
+        }
+
         case TARGET(LOAD_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();

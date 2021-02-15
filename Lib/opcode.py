@@ -214,4 +214,8 @@ def_op('SET_UPDATE', 163)
 def_op('DICT_MERGE', 164)
 def_op('DICT_UPDATE', 165)
 
+# Guido
+jabs_op('TYPE_GUARD', 166)
+def_op('LOAD_ATTR_SLOT', 167)
+
 del def_op, name_op, jrel_op, jabs_op

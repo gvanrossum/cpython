@@ -127,6 +127,8 @@ extern "C" {
 #define SET_UPDATE              163
 #define DICT_MERGE              164
 #define DICT_UPDATE             165
+#define TYPE_GUARD              166
+#define LOAD_ATTR_SLOT          167
 
 #ifdef NEED_OPCODE_JUMP_TABLES
 static uint32_t _PyOpcode_RelativeJump[8] = {
@@ -145,7 +147,7 @@ static uint32_t _PyOpcode_Jump[8] = {
     536870912U,
     101695488U,
     67141632U,
-    0U,
+    64U,
     0U,
     0U,
 };
@@ -319,8 +321,8 @@ static char *opcode_names[256] = {
     "SET_UPDATE",
     "DICT_MERGE",
     "DICT_UPDATE",
-    "<166>",
-    "<167>",
+    "TYPE_GUARD",
+    "LOAD_ATTR_SLOT",
     "<168>",
     "<169>",
     "<170>",

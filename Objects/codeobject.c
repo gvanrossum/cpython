@@ -268,6 +268,8 @@ PyCode_NewWithPosOnlyArgs(int argcount, int posonlyargcount, int kwonlyargcount,
     co->co_opcache = NULL;
     co->co_opcache_flag = 0;
     co->co_opcache_size = 0;
+    co->co_the_type = NULL;
+    co->co_the_tag = 0;
     return co;
 }
 
