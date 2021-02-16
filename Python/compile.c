@@ -28,6 +28,7 @@
 #include "Python-ast.h"
 #include "ast.h"
 #include "code.h"
+#include "structmember.h"
 #include "symtable.h"
 #define NEED_OPCODE_JUMP_TABLES
 #define NEED_OPCODE_NAMES
@@ -215,6 +216,7 @@ struct compiler {
                                     including names tuple */
     struct compiler_unit *u; /* compiler state for current block */
     PyObject *c_stack;           /* Python list holding compiler_unit ptrs */
+    // TODO: c_arena is not used except by the disassembler?
     PyArena *c_arena;            /* pointer to memory allocation arena */
 };
 
@@ -1074,6 +1076,7 @@ stack_effect(int opcode, int oparg, int jump)
         case BUILD_CONST_KEY_MAP:
             return -oparg;
         case LOAD_ATTR:
+        case LOAD_ATTR_SLOT:
             return 0;
         case COMPARE_OP:
         case IS_OP:
@@ -1097,6 +1100,7 @@ stack_effect(int opcode, int oparg, int jump)
 
         case POP_JUMP_IF_FALSE:
         case POP_JUMP_IF_TRUE:
+        case TYPE_GUARD:
             return -1;
 
         case LOAD_GLOBAL:
@@ -6641,14 +6645,17 @@ dump_instr(const struct instr *i)
     }
     fprintf(stderr, "line: %d, opcode: %d (%s) %s%s%s\n",
                     i->i_lineno, i->i_opcode, opcode_names[i->i_opcode], arg, jabs, jrel);
+    if (is_jump(i)) {
+        fprintf(stderr, "                 target: %p\n", i->i_target);
+    }
 }
 
 static void
 dump_basicblock(const basicblock *b)
 {
     const char *b_return = b->b_return ? "return " : "";
-    fprintf(stderr, "used: %d, depth: %d, offset: %d %s\n",
-        b->b_iused, b->b_startdepth, b->b_offset, b_return);
+    fprintf(stderr, "%p used: %d, depth: %d, offset: %d %s\n",
+        b, b->b_iused, b->b_startdepth, b->b_offset, b_return);
     if (b->b_instr) {
         int i;
         for (i = 0; i < b->b_iused; i++) {
@@ -7673,7 +7680,7 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
     // - The actual argument given is a class with slots
     // - At least one of the slots is used in LOAD_ATTR
 
-    // But we'll take a simpler requirement instead:
+    // But we'll start with a simpler requirement instead:
     // - There's at least one argument
 
     assert(co->co_argcount > 0);  // Caller must check this.
@@ -7683,98 +7690,114 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
         return 0;  // Type isn't eligible.
     }
 
+    // Initialize a compiler struct.
     struct compiler cc;
     if (!compiler_init(&cc)) {
         return -1;
     }
+
+    // Disassemble the original code object into this.
     if (!disassemble(&cc, co)) {
+        if (cc.c_arena) {
+            PyArena_Free(cc.c_arena);
+        }
         compiler_free(&cc);
-        // TODO: What about cc.c_arena?
         return -1;
     }
 
     int res = -1;  // Anticipate failure.
 
-    Py_INCREF(type);  // TODO: Add the XDECREF to codeobject
-    co->co_the_type = type;
-    co->co_the_tag = type->tp_version_tag;
-
     // What drives me crazy is that the chain from u_blocks via b_list
     // goes from newest to oldest block.  The oldest being of course
-    // the entry point for the whole function.
-    // I am adopting the following conventions:
-    // first: start of function
-    // last: end of function
-    // head: newly created block at start of function
-    // tail: newly created block after end of copy of function
-    // The convention old/new refers to the original function body
-    // and the modified copy.  The final logical code sequence is:
-    // HEAD
-    // new_first ... new_last
-    // TAIL
-    // old_first ... old_last
-    // We do some pointer switching later to ensure that going from
-    // u_blocks via b_list will encounter blocks in this order.
+    // the entry point for the whole function.  OTOH the chain from
+    // the entry point to the end goes via b_next, but to find the
+    // entry point, assemble() follows the chain from u_blocks via b_list
+    // until it hits NULL, and then remembers the last block seen.
+    //
+    // I am adopting the following naming conventions:
+    //
+    // *_first: start of function
+    // *_last: end of function
+    // prefix: newly created block at start of function
+    // suffix: newly created block after end of copy of function
+    // old_*: original code of the function
+    // new_*: copied code that we will modify
+    //
+    // The final logical code sequence (i.e., via b_next) is:
+    //
+    //   prefix
+    //   new_first
+    //   ...
+    //   new_last
+    //   suffix
+    //   old_first
+    //   ...
+    //   old_last
+    //
+    // But we need the sequence from u_blocks via b_list to be the reverse.
+    // Initially we create prefix, new_first...new_last and suffix
+    // in that order, so old_last->b_list points to prefix, and suffix->b_list
+    // is NULL.  We do some pointer switching later to fix things up.
 
+    // Survey tho original list of blocks.
     basicblock *old_last = cc.u->u_blocks;
-
     basicblock *old_first = NULL;
     int nblocks = 0;
     for (basicblock *b = cc.u->u_blocks; b != NULL; b = b->b_list) {
         nblocks++;
         old_first = b;
     }
+    assert(old_first);
 
-    basicblock *head_block = compiler_new_block(&cc);
-    if (head_block == NULL)
+    // Create the prefix block.
+    basicblock *prefix_block = compiler_next_block(&cc);
+    if (prefix_block == NULL)
         goto finally;
-
-    struct block_pair {
-        basicblock *old;
-        basicblock *new;
-    };
-    struct block_pair *pairs = PyObject_Calloc(nblocks, sizeof(struct block_pair));
-    if (!pairs)
+    if (!compiler_addop_i(&cc, LOAD_FAST, 0))  // Local 0 is self.  TODO: what if it's a cell?
         goto finally;
-
+    if (!compiler_addop_j(&cc, TYPE_GUARD, old_first))
+        goto finally;
+ 
+    // Copy all original blocks (following b_next, not b_list).
     basicblock *new_first = NULL;
-    basicblock *old, *new;
-    int iblock;
-    for (old = old_first, iblock = 0; old != NULL; old = old->b_next, iblock++) {
-        new = compiler_new_block(&cc);
+    basicblock *new_last = NULL;
+    for (basicblock *old = old_first; old != old_last->b_next; old = old->b_next) {
+        fprintf(stderr, "Copying block:\n");
+        dump_basicblock(old);
+        basicblock *new = compiler_next_block(&cc);
         if (!new)
             goto finally;
-        if (iblock == 0) {
+        if (!new_first) {
             new_first = new;
-        } else {
-            pairs[iblock - 1].new->b_next = new;
         }
-        pairs[iblock].old = old;
-        pairs[iblock].new = new;
-        // Link the blocks together
-        new->b_other = old;
+        new_last = new;
+        // Link old block to new block.
         old->b_other = new;
-        // TODO: Use a block copy?
+        // Copy instructions.  (TODO: allocate + memcpy?)
         for (int iop = 0; iop < old->b_iused; iop++) {
             int niop = compiler_next_instr(new);
             if (niop < 0) {
                 return -1;
             }
+            // This keeps the old i_target; we'll fix that up below.
             new->b_instr[niop] = old->b_instr[iop];
         }
+        // Copy misc flags.
+        new->b_return = old->b_return;
+        new->b_exit = old->b_exit;
+        new->b_nofallthrough = old->b_nofallthrough;
+        fprintf(stderr, "New block:\n");
+        dump_basicblock(new);
     }
-    assert(new);
-    basicblock *new_last = new;
+    assert(new_first && new_last);
 
     // Fix up i_target fields.
-    for (iblock = 0; iblock < nblocks; iblock++) {
-        basicblock *new = pairs[iblock].new;
-        for (int iop = 0; iop < new->b_iused; iop++) {
-            struct instr *instr = &new->b_instr[iop];
+    for (basicblock *b = new_first; b != new_last->b_next; b = b->b_next) {
+        for (int iop = 0; iop < b->b_iused; iop++) {
+            struct instr *instr = &b->b_instr[iop];
             if (is_jump(instr)) {
                 basicblock *old_target = instr->i_target;
                 assert(old_target && old_target->b_other);
-                assert(old_target->b_other->b_other == old_target);
                 instr->i_target = old_target->b_other;
             }
         }
@@ -7782,45 +7805,101 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
 
     // Add a final block with 'return None',
     // so we don't fall through into the old blocks.
-    basicblock *tail_block = compiler_new_block(&cc);
-    if (!tail_block)
+    // TODO: Is None always constant zero?
+    basicblock *suffix_block = compiler_next_block(&cc);
+    if (!suffix_block)
         goto finally;
-    cc.u->u_curblock = tail_block;
     if (!compiler_addop_load_const(&cc, Py_None))
         goto finally;
     if (!compiler_addop(&cc, RETURN_VALUE))
         goto finally;
 
-    // Add code to the top block with a type guard,
-    // which jumps to the old code if the guard doesn't pass.
-    cc.u->u_curblock = head_block;
-    if (!compiler_addop_i(&cc, LOAD_ATTR_SLOT, 0))
-        goto finally;
-    if (!compiler_addop_j(&cc, TYPE_GUARD, old_first))
-        goto finally;
-    head_block->b_next = new_first;
+    // Fix up b_next pointers.
+    // We have [old_first ... old_last] -> [prefix -> new_first ... new_last -> suffix] -> NULL.
+    // We want [prefix -> new_first ... new_last -> suffix] -> [old_first ... old_last] -> NULL.
+    old_last->b_next = NULL;
+    suffix_block->b_next = old_first;
 
-    // Switch some pointers around so assemble() doesn't get lost.
+    // Fix up b_list pointers.
+    // These basically just go in the opposite direction.
+    // We have u_blocks -> [suffix -> new_last ... new_first -> prefix] -> [old_last ... old_first] -> NULL.
+    // We want u_blocks -> [old_last ... old_first] -> [suffix -> new_last ... new_first -> prefix] -> NULL.
+    prefix_block->b_list = NULL;
+    old_first->b_list = suffix_block;
     cc.u->u_blocks = old_last;
-    old_first->b_list = tail_block;
-    tail_block->b_list = new_last;
-    new_first->b_list = head_block;
-    head_block->b_list = NULL;
 
-    // Check our work.
-    int n = 0;
-    basicblock *last = NULL;
-    for (basicblock *b = cc.u->u_blocks; b != NULL; b = b->b_list) {
-        n++;
-        last = b;
+    // Print all blocks in b_next order.
+    fprintf(stderr, "\n==========================\n");
+    for (basicblock *b = prefix_block; b != NULL; b = b->b_next) {
+        dump_basicblock(b);
     }
-    assert(n == nblocks*2 + 2);
-    assert(last == head_block);
-    fprintf(stderr, "Phew!\n");
+    fprintf(stderr, "==========================\n\n");
 
-    // TODO: assemble into code object etc.
+    // Check that PyObject* is aligned to a multiple of its size.
+    struct foo { char a; PyObject *b; };
+    assert(sizeof(struct foo) == 2*sizeof(PyObject *));
+    assert(offsetof(struct foo, b) == sizeof(PyObject *));
 
-    res = 0;  // Phew, success!
+    // Update the new blocks to replace self.attr instructions.
+    // In particular, a sequence of LOAD_FAST 0, LOAD_ATTR x
+    // will be replaced with LOAD_FAST 0, LOAD_ATTR_SLOT i,
+    // but only if x is a slot of the type.
+    PyObject *names = co->co_names;
+    assert(PyTuple_CheckExact(names));
+    Py_ssize_t num_names = PyTuple_GET_SIZE(names);
+    int count = 0;  // How many we've replaced.
+    for (basicblock *b = new_first; b != suffix_block; b = b->b_next) {
+        assert(b);
+        dump_basicblock(b);
+        for (int i = 1; i < b->b_iused; i++) {
+            struct instr *instr = &b->b_instr[i];
+            if (instr->i_opcode == LOAD_ATTR) {
+                struct instr *prev = instr - 1;
+                if (prev->i_opcode == LOAD_FAST && prev->i_oparg == 0) {
+                    assert(0 <= instr->i_oparg && instr->i_oparg < num_names);
+                    PyObject *name = PyTuple_GET_ITEM(names, instr->i_oparg);
+                    PyObject *descr = _PyType_Lookup(type, name);
+                    if (descr != NULL) {
+                        // We found an attribute with a data-like descriptor.
+                        PyTypeObject *dtype = Py_TYPE(descr);
+                        if (dtype == &PyMemberDescr_Type) {  // It's a slot
+                            PyMemberDescrObject *member = (PyMemberDescrObject *)descr;
+                            struct PyMemberDef *dmem = member->d_member;
+                            if (dmem->type == T_OBJECT_EX) {
+                                Py_ssize_t offset = dmem->offset;
+                                assert(offset > 0);
+                                assert(offset % sizeof(PyObject *) == 0);
+                                Py_ssize_t index = offset / sizeof(PyObject *);
+                                instr->i_opcode = LOAD_ATTR_SLOT;
+                                instr->i_oparg = (int)index;
+                                count++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Assemble into new code object and update fields in old code object.
+    if (count > 0) {
+        fprintf(stderr, "Start assembly, replaced %d opcodes\n", count);
+        PyCodeObject *newco = assemble(&cc, 0);
+        if (newco != NULL) {
+            // TODO: Assert that consts, names etc. match
+            Py_INCREF(newco->co_code);
+            co->co_optimized_code = newco->co_code;
+            Py_DECREF(newco);  // All we wanted was the bytecode array.
+            co->co_the_tag = type->tp_version_tag;
+            Py_INCREF(type);
+            co->co_the_type = type;
+            fprintf(stderr, "End optimize\n");
+            res = 0;
+        }
+    } else {
+        fprintf(stderr, "End optimize, wasted time\n");
+        res = 0;
+    }
 
 finally:
     compiler_unit_free(cc.u);

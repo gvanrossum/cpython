@@ -270,6 +270,7 @@ PyCode_NewWithPosOnlyArgs(int argcount, int posonlyargcount, int kwonlyargcount,
     co->co_opcache_size = 0;
     co->co_the_type = NULL;
     co->co_the_tag = 0;
+    co->co_optimized_code = NULL;
     return co;
 }
 
@@ -399,6 +400,7 @@ static PyMemberDef code_memberlist[] = {
     {"co_name",         T_OBJECT,       OFF(co_name),            READONLY},
     {"co_firstlineno",  T_INT,          OFF(co_firstlineno),     READONLY},
     {"co_linetable",    T_OBJECT,       OFF(co_linetable),       READONLY},
+    {"co_optimized_code", T_OBJECT,     OFF(co_optimized_code),  READONLY},  // Guido
     {NULL}      /* Sentinel */
 };
 
@@ -665,6 +667,8 @@ code_dealloc(PyCodeObject *co)
     Py_XDECREF(co->co_filename);
     Py_XDECREF(co->co_name);
     Py_XDECREF(co->co_linetable);
+    Py_XDECREF(co->co_the_type);
+    Py_XDECREF(co->co_optimized_code);
     if (co->co_cell2arg != NULL)
         PyMem_Free(co->co_cell2arg);
     if (co->co_zombieframe != NULL)
