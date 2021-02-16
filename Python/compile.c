@@ -5944,7 +5944,12 @@ makecode(struct compiler *c, struct assembler *a, PyObject *consts)
 
 
 /* For debugging purposes only */
-#if 1
+
+// Set to 1 to enable debug output for disassembler and optimizer.
+// Requires dump_basicblock().
+#define DEBUG_DIS_OPT 0
+
+#if DEBUG_DIS_OPT
 static void
 dump_instr(const struct instr *i)
 {
@@ -6727,7 +6732,7 @@ PyCode_Optimize(PyObject *code, PyObject* Py_UNUSED(consts),
 
 
 //////////////////////////////////////////////////////////////////////////////
-// Disassembler
+// Disassembler and optimizer
 //////////////////////////////////////////////////////////////////////////////
 
 enum { UNLABELED=0, IS_TARGET=1, AFTER_JUMP=2 } labeling;
@@ -6865,7 +6870,9 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
         if (labels[iop]) {
             basicblock *block = c->u->u_curblock;
             if (block->b_iused) {
+#if DEBUG_DIS_OPT
                 dump_basicblock(c->u->u_curblock);
+#endif
                 block = compiler_next_block(c);
                 if (!block)
                     goto finally;
@@ -6878,7 +6885,9 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
         int opcode = _Py_OPCODE(word);
         int oparg = _Py_OPARG(word) | ext_arg;
         if (opcode == EXTENDED_ARG) {
+#if DEBUG_DIS_OPT
             fprintf(stderr, "%s %4zd: EXTENDED_ARG %d\n", prefix, iop * sizeof(_Py_CODEUNIT), oparg);
+#endif
             ext_arg = oparg << 8;
             continue;
         }
@@ -6887,12 +6896,17 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
         _PyCode_CheckLineNumber(iop * sizeof(_Py_CODEUNIT), &bounds);
         if (bounds.ar_line != lineno) {
             lineno = bounds.ar_line;
+#if DEBUG_DIS_OPT
             fprintf(stderr, "Line %d\n", lineno);
-        }
+#endif
+		}
         c->u->u_lineno = lineno;
 
         if (HAS_ARG(opcode)) {
-            fprintf(stderr, "%s %4zd: %s %d\n", prefix, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode], oparg);
+#if DEBUG_DIS_OPT
+            fprintf(stderr, "%s %4zd: %s %d\n",
+                    prefix, iop * sizeof (_Py_CODEUNIT), opcode_names[opcode], oparg);
+#endif
             if (is_relative_jump_op(opcode)) {
                 // Make relative jump args absolute, so we can fill in i_target below.
                 // The assembler reconstructs oparg from i_target.
@@ -6901,19 +6915,21 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
             if (!compiler_addop_i(c, opcode, oparg))
                 goto finally;
         } else {
+#if DEBUG_DIS_OPT
             fprintf(stderr, "%s %4zd: %s\n", prefix, iop * sizeof(_Py_CODEUNIT), opcode_names[opcode]);
+#endif
             if (!compiler_addop(c, opcode))
                 goto finally;
         }
     }
 
+#if DEBUG_DIS_OPT
     // Dump the final basic block.
     if (c->u->u_curblock->b_iused) {
         dump_basicblock(c->u->u_curblock);
     }
-
     fprintf(stderr, "Done len=%d.\n", (int)len);
-    fflush(stderr);
+#endif
 
     // Fill in i_target for jump instructions.
     for (basicblock *b = c->u->u_blocks; b != NULL; b = b->b_list) {
@@ -6922,10 +6938,6 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
             if (is_jump(instr)) {
                 // Note: oparg of relative jumps has been adjusted to absolute above!
                 int dest = instr->i_oparg / sizeof(_Py_CODEUNIT);
-                if (block_starts[dest] == NULL) {
-                    fprintf(stderr, "ERROR!\n");
-                    dump_instr(instr);
-                }
                 assert(block_starts[dest] != NULL);
                 instr->i_target = block_starts[dest];
             }
@@ -7075,8 +7087,10 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
     basicblock *new_first = NULL;
     basicblock *new_last = NULL;
     for (basicblock *old = old_first; old != old_last->b_next; old = old->b_next) {
+#if DEBUG_DIS_OPT
         fprintf(stderr, "Copying block:\n");
         dump_basicblock(old);
+#endif
         basicblock *new = compiler_next_block(&cc);
         if (!new)
             goto finally;
@@ -7099,8 +7113,10 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
         new->b_return = old->b_return;
         new->b_exit = old->b_exit;
         new->b_nofallthrough = old->b_nofallthrough;
+#if DEBUG_DIS_OPT
         fprintf(stderr, "New block:\n");
         dump_basicblock(new);
+#endif
     }
     assert(new_first && new_last);
 
@@ -7141,12 +7157,14 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
     old_first->b_list = suffix_block;
     cc.u->u_blocks = old_last;
 
+#if DEBUG_DIS_OPT
     // Print all blocks in b_next order.
     fprintf(stderr, "\n==========================\n");
     for (basicblock *b = prefix_block; b != NULL; b = b->b_next) {
         dump_basicblock(b);
     }
     fprintf(stderr, "==========================\n\n");
+#endif
 
     // Check that PyObject* is aligned to a multiple of its size.
     struct foo { char a; PyObject *b; };
@@ -7163,7 +7181,9 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
     int count = 0;  // How many we've replaced.
     for (basicblock *b = new_first; b != suffix_block; b = b->b_next) {
         assert(b);
+#if DEBUG_DIS_OPT
         dump_basicblock(b);
+#endif
         for (int i = 1; i < b->b_iused; i++) {
             struct instr *instr = &b->b_instr[i];
             if (instr->i_opcode == LOAD_ATTR) {
@@ -7196,7 +7216,9 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
 
     // Assemble into new code object and update fields in old code object.
     if (count > 0) {
+#if DEBUG_DIS_OPT
         fprintf(stderr, "Start assembly, replaced %d opcodes\n", count);
+#endif
         PyCodeObject *newco = assemble(&cc, 0);
         if (newco != NULL) {
             // TODO: Assert that consts, names etc. match
@@ -7206,11 +7228,15 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
             co->co_the_tag = type->tp_version_tag;
             Py_INCREF(type);
             co->co_the_type = type;
+#if DEBUG_DIS_OPT
             fprintf(stderr, "End optimize\n");
+#endif
             res = 0;
         }
     } else {
+#if DEBUG_DIS_OPT
         fprintf(stderr, "End optimize, wasted time\n");
+#endif
         res = 0;
     }
 
