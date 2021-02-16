@@ -65,6 +65,7 @@ struct PyCodeObject {
     // Guido
     PyTypeObject *co_the_type;
     uint64_t co_the_tag;
+    PyObject *co_optimized_code;
 };
 
 /* Masks for co_flags above */

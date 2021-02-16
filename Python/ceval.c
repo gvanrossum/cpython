@@ -1448,11 +1448,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     consts = co->co_consts;
     fastlocals = f->f_localsplus;
     freevars = f->f_localsplus + co->co_nlocals;
-    assert(PyBytes_Check(co->co_code));
-    assert(PyBytes_GET_SIZE(co->co_code) <= INT_MAX);
-    assert(PyBytes_GET_SIZE(co->co_code) % sizeof(_Py_CODEUNIT) == 0);
-    assert(_Py_IS_ALIGNED(PyBytes_AS_STRING(co->co_code), sizeof(_Py_CODEUNIT)));
-    first_instr = (_Py_CODEUNIT *) PyBytes_AS_STRING(co->co_code);
+    PyObject *co_code = co->co_optimized_code ? co->co_optimized_code : co->co_code;
+    assert(PyBytes_Check(co_code));
+    assert(PyBytes_GET_SIZE(co_code) <= INT_MAX);
+    assert(PyBytes_GET_SIZE(co_code) % sizeof(_Py_CODEUNIT) == 0);
+    assert(_Py_IS_ALIGNED(PyBytes_AS_STRING(co_code), sizeof(_Py_CODEUNIT)));
+    first_instr = (_Py_CODEUNIT *) PyBytes_AS_STRING(co_code);
     /*
        f->f_lasti refers to the index of the last instruction,
        unless it's -1 in which case next_instr should be first_instr.
@@ -1491,6 +1492,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 goto exit_eval_frame;
             }
             if (co->co_argcount > 0) {
+                // Note: The optimized bytecode will be used on the *next* run.
                 if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
                     goto exit_eval_frame;
                 }
@@ -3178,7 +3180,9 @@ main_loop:
 
         case TARGET(TYPE_GUARD): {
             PyObject *obj = POP();
-            if (obj->ob_type == co->co_the_type && obj->ob_type->tp_version_tag == co->co_the_tag) {
+            if (obj->ob_type == co->co_the_type &&
+                obj->ob_type->tp_version_tag == co->co_the_tag)
+            {
                 DISPATCH();
             }
             JUMPTO(oparg);
@@ -3187,9 +3191,9 @@ main_loop:
 
         case TARGET(LOAD_ATTR_SLOT): {
             PyObject *owner = TOP();
-            Py_ssize_t offset = oparg;
-            char *addr = (char *)owner + offset;
-            PyObject *res = *(PyObject **)addr;
+            Py_ssize_t index = oparg;  // Counted in units of sizeof(PyObject *)
+            PyObject **addr = (PyObject **)owner + index;
+            PyObject *res = *addr;
             if (res != NULL) {
                 Py_INCREF(res);
                 SET_TOP(res);
