@@ -167,7 +167,7 @@ static void *opcode_targets[256] = {
     &&TARGET_DICT_UPDATE,
     &&TARGET_TYPE_GUARD,
     &&TARGET_LOAD_ATTR_SLOT,
-    &&_unknown_opcode,
+    &&TARGET_STORE_ATTR_SLOT,
     &&_unknown_opcode,
     &&_unknown_opcode,
     &&_unknown_opcode,
