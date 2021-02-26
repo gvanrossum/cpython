@@ -222,5 +222,6 @@ def_op('DICT_UPDATE', 165)
 # Guido
 jabs_op('TYPE_GUARD', 166)
 slot_op('LOAD_ATTR_SLOT', 167)
+slot_op('STORE_ATTR_SLOT', 168)
 
 del def_op, name_op, jrel_op, jabs_op

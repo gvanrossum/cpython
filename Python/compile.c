@@ -1045,6 +1045,7 @@ stack_effect(int opcode, int oparg, int jump)
             return jump > 0 ? -1 : 1;
 
         case STORE_ATTR:
+        case STORE_ATTR_SLOT:
             return -2;
         case DELETE_ATTR:
             return -1;
@@ -7186,7 +7187,7 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
 #endif
         for (int i = 1; i < b->b_iused; i++) {
             struct instr *instr = &b->b_instr[i];
-            if (instr->i_opcode == LOAD_ATTR) {
+            if (instr->i_opcode == LOAD_ATTR || instr->i_opcode == STORE_ATTR) {
                 struct instr *prev = instr - 1;
                 if (prev->i_opcode == LOAD_FAST && prev->i_oparg == 0) {
                     assert(0 <= instr->i_oparg && instr->i_oparg < num_names);
@@ -7203,7 +7204,7 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
                                 assert(offset > 0);
                                 assert(offset % sizeof(PyObject *) == 0);
                                 Py_ssize_t index = offset / sizeof(PyObject *);
-                                instr->i_opcode = LOAD_ATTR_SLOT;
+                                instr->i_opcode = instr->i_opcode == LOAD_ATTR ? LOAD_ATTR_SLOT : STORE_ATTR_SLOT;
                                 instr->i_oparg = (int)index;
                                 count++;
                             }

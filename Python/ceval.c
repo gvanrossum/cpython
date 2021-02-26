@@ -3205,6 +3205,20 @@ main_loop:
             }
         }
 
+        case TARGET(STORE_ATTR_SLOT): {
+            PyObject *owner = TOP();
+            PyObject *v = SECOND();
+            STACK_SHRINK(2);
+
+            Py_ssize_t index = oparg;  // Counted in units of sizeof(PyObject *)
+            PyObject **addr = (PyObject **)owner + index;
+            PyObject *old = *addr;
+            *addr = v;  // This steals the reference.
+            Py_XDECREF(old);
+            Py_DECREF(owner);
+            DISPATCH();
+        }
+
         case TARGET(LOAD_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();
