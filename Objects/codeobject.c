@@ -400,6 +400,7 @@ static PyMemberDef code_memberlist[] = {
     {"co_name",         T_OBJECT,       OFF(co_name),            READONLY},
     {"co_firstlineno",  T_INT,          OFF(co_firstlineno),     READONLY},
     {"co_linetable",    T_OBJECT,       OFF(co_linetable),       READONLY},
+    {"co_the_type",     T_OBJECT,       OFF(co_the_type),        READONLY},  // Guido
     {"co_optimized_code", T_OBJECT,     OFF(co_optimized_code),  READONLY},  // Guido
     {NULL}      /* Sentinel */
 };
