@@ -40,7 +40,7 @@ def _try_compile(source, name):
         c = compile(source, name, 'exec')
     return c
 
-def dis(x=None, *, file=None, depth=None):
+def dis(x=None, *, file=None, depth=None, optimized=True):
     """Disassemble classes, methods, functions, and other compiled objects.
 
     With no argument, disassemble the last traceback.
@@ -50,7 +50,7 @@ def dis(x=None, *, file=None, depth=None):
     in a special attribute.
     """
     if x is None:
-        distb(file=file)
+        distb(file=file, optimized=optimized)
         return
     # Extract functions from methods.
     if hasattr(x, '__func__'):
@@ -71,21 +71,21 @@ def dis(x=None, *, file=None, depth=None):
             if isinstance(x1, _have_code):
                 print("Disassembly of %s:" % name, file=file)
                 try:
-                    dis(x1, file=file, depth=depth)
+                    dis(x1, file=file, depth=depth, optimized=optimized)
                 except TypeError as msg:
                     print("Sorry:", msg, file=file)
                 print(file=file)
     elif hasattr(x, 'co_code'): # Code object
-        _disassemble_recursive(x, file=file, depth=depth)
+        _disassemble_recursive(x, file=file, depth=depth, optimized=optimized)
     elif isinstance(x, (bytes, bytearray)): # Raw bytecode
         _disassemble_bytes(x, file=file)
     elif isinstance(x, str):    # Source code
-        _disassemble_str(x, file=file, depth=depth)
+        _disassemble_str(x, file=file, depth=depth, optimized=optimized)
     else:
         raise TypeError("don't know how to disassemble %s objects" %
                         type(x).__name__)
 
-def distb(tb=None, *, file=None):
+def distb(tb=None, *, file=None, optimized=True):
     """Disassemble a traceback (default: last traceback)."""
     if tb is None:
         try:
@@ -93,7 +93,8 @@ def distb(tb=None, *, file=None):
         except AttributeError:
             raise RuntimeError("no last traceback to disassemble") from None
         while tb.tb_next: tb = tb.tb_next
-    disassemble(tb.tb_frame.f_code, tb.tb_lasti, file=file)
+    disassemble(tb.tb_frame.f_code, tb.tb_lasti, file=file,
+                optimized=optimized)
 
 # The inspect module interrogates this dictionary to build its
 # list of CO_* constants. It is also used by pretty_flags to
@@ -258,7 +259,7 @@ class Instruction(_Instruction):
         return ' '.join(fields).rstrip()
 
 
-def get_instructions(x, *, first_line=None):
+def get_instructions(x, *, first_line=None, optimized=True):
     """Iterator for the opcodes in methods, functions or code
 
     Generates a series of Instruction named tuples giving the details of
@@ -270,15 +271,19 @@ def get_instructions(x, *, first_line=None):
     the disassembled code object.
     """
     co = _get_code_object(x)
+    co_code = co.co_code
+    if optimized and co.co_optimized_code:
+        co_code = co.co_optimized_code
+    slots = getattr(co.co_the_type, '__slots__', None)
     cell_names = co.co_cellvars + co.co_freevars
     linestarts = dict(findlinestarts(co))
     if first_line is not None:
         line_offset = first_line - co.co_firstlineno
     else:
         line_offset = 0
-    return _get_instructions_bytes(co.co_code, co.co_varnames, co.co_names,
-                                   co.co_consts, cell_names, linestarts,
-                                   line_offset)
+    return _get_instructions_bytes(co_code, co.co_varnames, co.co_names,
+                                   slots, co.co_consts, cell_names,
+                                   linestarts, line_offset)
 
 def _get_const_info(const_index, const_list):
     """Helper to get optional details about const references
@@ -307,9 +312,25 @@ def _get_name_info(name_index, name_list):
         argrepr = repr(argval)
     return argval, argrepr
 
+def _get_slot_info(slot_index, slot_list):
+    """Helper to get optional details about slot references
 
-def _get_instructions_bytes(code, varnames=None, names=None, constants=None,
-                      cells=None, linestarts=None, line_offset=0):
+       Returns the dereferenced name as both value and repr if the name
+       list is defined.
+       Otherwise returns the name index and its repr().
+    """
+    argval = slot_index
+    if slot_list is not None:
+        argval = slot_list[slot_index]
+        argrepr = argval
+    else:
+        argrepr = repr(argval)
+    return argval, argrepr
+
+
+def _get_instructions_bytes(code, varnames=None, names=None, slots=None,
+                            constants=None, cells=None, linestarts=None,
+                            line_offset=0):
     """Iterate over the instructions in a bytecode string.
 
     Generates a sequence of Instruction namedtuples giving the details of each
@@ -318,6 +339,8 @@ def _get_instructions_bytes(code, varnames=None, names=None, constants=None,
     arguments.
 
     """
+    import struct
+    slotbase = sys.getsizeof(object()) // struct.calcsize('P')
     labels = findlabels(code)
     starts_line = None
     for offset, op, arg in _unpack_opargs(code):
@@ -338,6 +361,8 @@ def _get_instructions_bytes(code, varnames=None, names=None, constants=None,
                 argval, argrepr = _get_const_info(arg, constants)
             elif op in hasname:
                 argval, argrepr = _get_name_info(arg, names)
+            elif op in hasslot:
+                argval, argrepr = _get_slot_info(arg - slotbase, slots)
             elif op in hasjrel:
                 argval = offset + 2 + arg
                 argrepr = "to " + repr(argval)
@@ -362,15 +387,19 @@ def _get_instructions_bytes(code, varnames=None, names=None, constants=None,
                           arg, argval, argrepr,
                           offset, starts_line, is_jump_target)
 
-def disassemble(co, lasti=-1, *, file=None):
+def disassemble(co, lasti=-1, *, file=None, optimized=True):
     """Disassemble a code object."""
+    co_code = co.co_code
+    if optimized and co.co_optimized_code:
+        co_code = co.co_optimized_code
+    slots = getattr(co.co_the_type, '__slots__', None)
     cell_names = co.co_cellvars + co.co_freevars
     linestarts = dict(findlinestarts(co))
-    _disassemble_bytes(co.co_code, lasti, co.co_varnames, co.co_names,
+    _disassemble_bytes(co_code, lasti, co.co_varnames, co.co_names, slots,
                        co.co_consts, cell_names, linestarts, file=file)
 
-def _disassemble_recursive(co, *, file=None, depth=None):
-    disassemble(co, file=file)
+def _disassemble_recursive(co, *, file=None, depth=None, optimized=True):
+    disassemble(co, file=file, optimized=optimized)
     if depth is None or depth > 0:
         if depth is not None:
             depth = depth - 1
@@ -378,11 +407,12 @@ def _disassemble_recursive(co, *, file=None, depth=None):
             if hasattr(x, 'co_code'):
                 print(file=file)
                 print("Disassembly of %r:" % (x,), file=file)
-                _disassemble_recursive(x, file=file, depth=depth)
+                _disassemble_recursive(x, file=file, depth=depth,
+                                       optimized=optimized)
 
 def _disassemble_bytes(code, lasti=-1, varnames=None, names=None,
-                       constants=None, cells=None, linestarts=None,
-                       *, file=None, line_offset=0):
+                       slots=None, constants=None, cells=None,
+                       linestarts=None, *, file=None, line_offset=0):
     # Omit the line number column entirely if we have no line number info
     show_lineno = bool(linestarts)
     if show_lineno:
@@ -398,7 +428,7 @@ def _disassemble_bytes(code, lasti=-1, varnames=None, names=None,
         offset_width = len(str(maxoffset))
     else:
         offset_width = 4
-    for instr in _get_instructions_bytes(code, varnames, names,
+    for instr in _get_instructions_bytes(code, varnames, names, slots,
                                          constants, cells, linestarts,
                                          line_offset=line_offset):
         new_source_line = (show_lineno and
@@ -482,7 +512,10 @@ class Bytecode:
 
     def __iter__(self):
         co = self.codeobj
-        return _get_instructions_bytes(co.co_code, co.co_varnames, co.co_names,
+        co_code = co.co_optimized_code or co.co_code
+        slots = getattr(co.co_the_type, '__slots__', None)
+        return _get_instructions_bytes(co_code, co.co_varnames,
+                                       co.co_names, slots,
                                        co.co_consts, self._cell_names,
                                        self._linestarts,
                                        line_offset=self._line_offset)
@@ -502,17 +535,22 @@ class Bytecode:
         """Return formatted information about the code object."""
         return _format_code_info(self.codeobj)
 
-    def dis(self):
+    def dis(self, *, optimized=True):
         """Return a formatted view of the bytecode operations."""
         co = self.codeobj
         if self.current_offset is not None:
             offset = self.current_offset
         else:
             offset = -1
+        co_code = co.co_code
+        if optimized and co.co_optimized_code:
+            co_code = co.co_optimized_code
+        slots = getattr(co.co_the_type, '__slots__', None)
         with io.StringIO() as output:
-            _disassemble_bytes(co.co_code, varnames=co.co_varnames,
-                               names=co.co_names, constants=co.co_consts,
-                               cells=self._cell_names,
+            _disassemble_bytes(co_code, varnames=co.co_varnames,
+                               names=co.co_names,
+                               slots=slots,
+                               constants=co.co_consts, cells=self._cell_names,
                                linestarts=self._linestarts,
                                line_offset=self._line_offset,
                                file=output,
