@@ -4,9 +4,9 @@ opcode module - potentially shared between dis and other modules which
 operate on bytecodes (e.g. peephole optimizers).
 """
 
-__all__ = ["cmp_op", "hasconst", "hasname", "hasjrel", "hasjabs",
-           "haslocal", "hascompare", "hasfree", "opname", "opmap",
-           "HAVE_ARGUMENT", "EXTENDED_ARG", "hasnargs"]
+__all__ = ["cmp_op", "hasconst", "hasname", "hasslot", "hasjrel",
+           "hasjabs", "haslocal", "hascompare", "hasfree", "opname",
+           "opmap", "HAVE_ARGUMENT", "EXTENDED_ARG", "hasnargs"]
 
 # It's a chicken-and-egg I'm afraid:
 # We're imported before _opcode's made.
@@ -25,6 +25,7 @@ cmp_op = ('<', '<=', '==', '!=', '>', '>=')
 
 hasconst = []
 hasname = []
+hasslot = []
 hasjrel = []
 hasjabs = []
 haslocal = []
@@ -42,6 +43,10 @@ def def_op(name, op):
 def name_op(name, op):
     def_op(name, op)
     hasname.append(op)
+
+def slot_op(name, op):
+    def_op(name, op)
+    hasslot.append(op)
 
 def jrel_op(name, op):
     def_op(name, op)
@@ -216,6 +221,6 @@ def_op('DICT_UPDATE', 165)
 
 # Guido
 jabs_op('TYPE_GUARD', 166)
-def_op('LOAD_ATTR_SLOT', 167)
+slot_op('LOAD_ATTR_SLOT', 167)
 
 del def_op, name_op, jrel_op, jabs_op
