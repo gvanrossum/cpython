@@ -1979,6 +1979,22 @@ sys_guido(PyObject *self, PyObject *arg)
     return _PyCode_Disassemble(arg);
 }
 
+static PyObject *
+sys_eric(PyObject *self, PyObject *args)
+{
+    PyObject* co = NULL;
+    PyObject* type = NULL;
+    if (!PyArg_UnpackTuple(args, "eric", 2, 2, &co, &type)) {
+        return NULL;
+    }
+    if (_PyCode_Optimize((PyCodeObject *)co, type) != 0) {
+        Py_DECREF(co);
+        Py_DECREF(type);
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
@@ -2034,6 +2050,7 @@ static PyMethodDef sys_methods[] = {
     SYS_UNRAISABLEHOOK_METHODDEF
     SYS__DEACTIVATE_OPCACHE_METHODDEF
     {"guido", sys_guido, METH_O, "What guido wants"},
+    {"eric", sys_eric, METH_VARARGS, "What eric wants"},
     {NULL,              NULL}           /* sentinel */
 };
 
