@@ -6939,7 +6939,7 @@ disassemble(struct compiler *c, PyCodeObject *codeobj)
             if (is_jump(instr)) {
                 // Note: oparg of relative jumps has been adjusted to absolute above!
                 int dest = instr->i_oparg / sizeof(_Py_CODEUNIT);
-                assert(block_starts[dest] != NULL);
+                // block_starts[dest] can be NULL if the op is unreachable.
                 instr->i_target = block_starts[dest];
             }
         }
@@ -7127,8 +7127,11 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
             struct instr *instr = &b->b_instr[iop];
             if (is_jump(instr)) {
                 basicblock *old_target = instr->i_target;
-                assert(old_target && old_target->b_other);
-                instr->i_target = old_target->b_other;
+                // Ignore unreachable ops (see optimize_cfg()).
+                if (old_target != NULL) {
+                    assert(old_target->b_other);
+                    instr->i_target = old_target->b_other;
+                }
             }
         }
     }
