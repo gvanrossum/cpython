@@ -274,7 +274,7 @@ def get_instructions(x, *, first_line=None, optimized=True):
     co_code = co.co_code
     if optimized and co.co_optimized_code:
         co_code = co.co_optimized_code
-    slots = getattr(co.co_the_type, '__slots__', None)
+    slots = _get_slots(co.co_the_type)
     cell_names = co.co_cellvars + co.co_freevars
     linestarts = dict(findlinestarts(co))
     if first_line is not None:
@@ -311,6 +311,16 @@ def _get_name_info(name_index, name_list):
     else:
         argrepr = repr(argval)
     return argval, argrepr
+
+def _get_slots(cls):
+    if cls is None:
+        return []
+    slots = []
+    for cls in reversed(cls.__mro__):
+        if hasattr(cls, '__slots__'):
+            # The runtime prevents dupes so we don't have to check here.
+            slots.extend(cls.__slots__ or ())
+    return slots
 
 def _get_slot_info(slot_index, slot_list):
     """Helper to get optional details about slot references
@@ -392,7 +402,7 @@ def disassemble(co, lasti=-1, *, file=None, optimized=True):
     co_code = co.co_code
     if optimized and co.co_optimized_code:
         co_code = co.co_optimized_code
-    slots = getattr(co.co_the_type, '__slots__', None)
+    slots = _get_slots(co.co_the_type)
     cell_names = co.co_cellvars + co.co_freevars
     linestarts = dict(findlinestarts(co))
     _disassemble_bytes(co_code, lasti, co.co_varnames, co.co_names, slots,
@@ -513,7 +523,7 @@ class Bytecode:
     def __iter__(self):
         co = self.codeobj
         co_code = co.co_optimized_code or co.co_code
-        slots = getattr(co.co_the_type, '__slots__', None)
+        slots = _get_slots(co.co_the_type)
         return _get_instructions_bytes(co_code, co.co_varnames,
                                        co.co_names, slots,
                                        co.co_consts, self._cell_names,
@@ -545,7 +555,7 @@ class Bytecode:
         co_code = co.co_code
         if optimized and co.co_optimized_code:
             co_code = co.co_optimized_code
-        slots = getattr(co.co_the_type, '__slots__', None)
+        slots = _get_slots(co.co_the_type)
         with io.StringIO() as output:
             _disassemble_bytes(co_code, varnames=co.co_varnames,
                                names=co.co_names,
