@@ -312,14 +312,24 @@ def _get_name_info(name_index, name_list):
         argrepr = repr(argval)
     return argval, argrepr
 
+import struct
+_PTR_SIZE = struct.calcsize('P')
+del struct
+
 def _get_slots(cls):
     if cls is None:
         return []
-    slots = []
-    for cls in reversed(cls.__mro__):
-        if hasattr(cls, '__slots__'):
-            # The runtime prevents dupes so we don't have to check here.
-            slots.extend(cls.__slots__ or ())
+    maxindex = 0
+    descrs = {}
+    for cls in cls.__mro__:
+        for attr in cls.__dict__.values():
+            if type(attr) == types.MemberDescriptorType:
+                index = attr._offset // _PTR_SIZE
+                descrs[index] = attr.__name__
+                maxindex = max(index, maxindex)
+    slots = [''] * (maxindex + 1)
+    for index, name in descrs.items():
+        slots[index] = name
     return slots
 
 def _get_slot_info(slot_index, slot_list):
@@ -349,8 +359,6 @@ def _get_instructions_bytes(code, varnames=None, names=None, slots=None,
     arguments.
 
     """
-    import struct
-    slotbase = sys.getsizeof(object()) // struct.calcsize('P')
     labels = findlabels(code)
     starts_line = None
     for offset, op, arg in _unpack_opargs(code):
@@ -372,7 +380,7 @@ def _get_instructions_bytes(code, varnames=None, names=None, slots=None,
             elif op in hasname:
                 argval, argrepr = _get_name_info(arg, names)
             elif op in hasslot:
-                argval, argrepr = _get_slot_info(arg - slotbase, slots)
+                argval, argrepr = _get_slot_info(arg, slots)
             elif op in hasjrel:
                 argval = offset + 2 + arg
                 argrepr = "to " + repr(argval)
