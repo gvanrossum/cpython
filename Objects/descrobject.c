@@ -641,9 +641,16 @@ member_get_doc(PyMemberDescrObject *descr, void *closure)
     return PyUnicode_FromString(descr->d_member->doc);
 }
 
+static PyObject *
+member_get_offset(PyMemberDescrObject *descr, void *closure)
+{
+    return PyLong_FromSsize_t(descr->d_member->offset);
+}
+
 static PyGetSetDef member_getset[] = {
     {"__doc__", (getter)member_get_doc},
     {"__qualname__", (getter)descr_get_qualname},
+    {"_offset", (getter)member_get_offset},
     {0}
 };
 
