@@ -28,7 +28,7 @@ struct _PyOpcache {
 int _PyCode_InitOpcache(PyCodeObject *co);
 
 #define _PyCode_CODE(co) \
-    (co->co_optimized_code ? co->co_optimized_code : co->co_code)
+    ((co)->co_optimized_code ? (co)->co_optimized_code : (co)->co_code)
 
 #ifdef __cplusplus
 }
