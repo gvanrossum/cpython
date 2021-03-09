@@ -7696,6 +7696,12 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
     // But we'll start with a simpler requirement instead:
     // - There's at least one argument
 
+    if (self == NULL) {
+        // XXX (eric) We are in the midst of a generator, which
+        // complicates things...
+        return 0;
+    }
+
     assert(co->co_argcount > 0);  // Caller must check this.
 
     PyTypeObject *type = self->ob_type;
