@@ -7919,6 +7919,7 @@ _PyCode_Optimize(PyCodeObject *co, PyObject *self)
             co->co_the_tag = type->tp_version_tag;
             Py_INCREF(type);
             co->co_the_type = type;
+            // TODO: Copy co_linetable.
 #if DEBUG_DIS_OPT
             fprintf(stderr, "End optimize\n");
 #endif
