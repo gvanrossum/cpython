@@ -1673,9 +1673,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     freevars = f->f_localsplus + co->co_nlocals;
 
     PyObject *co_code = _PyCode_CODE(co);
-    if (co->co_opcache_flag < OPCACHE_MIN_RUNS) {
+    if (co->co_opcache_flag < opcache_min_runs) {
         co->co_opcache_flag++;
-        if (co->co_opcache_flag == OPCACHE_MIN_RUNS) {
+        if (co->co_opcache_flag == opcache_min_runs) {
             if (co->co_argcount > 0) {
                 if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
                     goto exit_eval_frame;
