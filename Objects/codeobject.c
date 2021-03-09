@@ -291,13 +291,15 @@ PyCode_New(int argcount, int kwonlyargcount,
 int
 _PyCode_InitOpcache(PyCodeObject *co)
 {
-    Py_ssize_t co_size = PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT);
+    // XXX (eric) We should use _PyCode_CODE() but I'm not sure that's safe.
+    PyObject *co_code = co->co_code;
+    Py_ssize_t co_size = PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT);
     co->co_opcache_map = (unsigned char *)PyMem_Calloc(co_size, 1);
     if (co->co_opcache_map == NULL) {
         return -1;
     }
 
-    _Py_CODEUNIT *opcodes = (_Py_CODEUNIT*)PyBytes_AS_STRING(co->co_code);
+    _Py_CODEUNIT *opcodes = (_Py_CODEUNIT*)PyBytes_AS_STRING(co_code);
     Py_ssize_t opts = 0;
 
     for (Py_ssize_t i = 0; i < co_size;) {
@@ -695,6 +697,7 @@ code_sizeof(PyCodeObject *co, PyObject *Py_UNUSED(args))
     if (co->co_opcache != NULL) {
         assert(co->co_opcache_map != NULL);
         // co_opcache_map
+        // XXX (eric) Use _PyCode_CODE() here?
         res += PyBytes_GET_SIZE(co->co_code) / sizeof(_Py_CODEUNIT);
         // co_opcache
         res += co->co_opcache_size * sizeof(_PyOpcache);
@@ -948,6 +951,7 @@ code_richcompare(PyObject *self, PyObject *other, int op)
     if (!eq) goto unequal;
     eq = co->co_firstlineno == cp->co_firstlineno;
     if (!eq) goto unequal;
+    // co_code implies co_optimized_code so we're okay to ignore it here.
     eq = PyObject_RichCompareBool(co->co_code, cp->co_code, Py_EQ);
     if (eq <= 0) goto unequal;
 
@@ -999,6 +1003,7 @@ code_hash(PyCodeObject *co)
     Py_hash_t h, h0, h1, h2, h3, h4, h5, h6;
     h0 = PyObject_Hash(co->co_name);
     if (h0 == -1) return -1;
+    // co_code implies co_optimizes_code so we're okay to ignore it here.
     h1 = PyObject_Hash(co->co_code);
     if (h1 == -1) return -1;
     h2 = PyObject_Hash(co->co_consts);
@@ -1256,6 +1261,7 @@ PyCode_Addr2Line(PyCodeObject *co, int addrq)
     if (addrq == -1) {
         return co->co_firstlineno;
     }
+    // XXX (eric) Use _PyCode_CODE() here?
     assert(addrq >= 0 && addrq < PyBytes_GET_SIZE(co->co_code));
     PyCodeAddressRange bounds;
     _PyCode_InitAddressRange(co, &bounds);

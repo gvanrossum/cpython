@@ -1448,7 +1448,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     consts = co->co_consts;
     fastlocals = f->f_localsplus;
     freevars = f->f_localsplus + co->co_nlocals;
-    PyObject *co_code = co->co_optimized_code ? co->co_optimized_code : co->co_code;
+    PyObject *co_code = _PyCode_CODE(co);
     assert(PyBytes_Check(co_code));
     assert(PyBytes_GET_SIZE(co_code) <= INT_MAX);
     assert(PyBytes_GET_SIZE(co_code) % sizeof(_Py_CODEUNIT) == 0);
@@ -1499,7 +1499,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             }
 #if OPCACHE_STATS
             opcache_code_objects_extra_mem +=
-                PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT) +
+                // While co_optimized_code isn't used until the next
+                // run, we can get away with using it right now.
+                PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT) +
                 sizeof(_PyOpcache) * co->co_opcache_size;
             opcache_code_objects++;
 #endif
