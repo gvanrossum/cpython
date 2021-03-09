@@ -1671,7 +1671,31 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     consts = co->co_consts;
     fastlocals = f->f_localsplus;
     freevars = f->f_localsplus + co->co_nlocals;
+
     PyObject *co_code = _PyCode_CODE(co);
+    if (co->co_opcache_flag < OPCACHE_MIN_RUNS) {
+        co->co_opcache_flag++;
+        if (co->co_opcache_flag == OPCACHE_MIN_RUNS) {
+            if (co->co_argcount > 0) {
+                // Note: The optimized bytecode will be used on the *next* run.
+                if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
+                    goto exit_eval_frame;
+                }
+                co_code = _PyCode_CODE(co);
+            }
+            if (_PyCode_InitOpcache(co) < 0) {
+                goto exit_eval_frame;
+            }
+#if OPCACHE_STATS
+            opcache_code_objects_extra_mem +=
+                // While co_optimized_code isn't used until the next
+                // run, we can get away with using it right now.
+                PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT) +
+                sizeof(_PyOpcache) * co->co_opcache_size;
+            opcache_code_objects++;
+#endif
+        }
+    }
     assert(PyBytes_Check(co_code));
     assert(PyBytes_GET_SIZE(co_code) <= INT_MAX);
     assert(PyBytes_GET_SIZE(co_code) % sizeof(_Py_CODEUNIT) == 0);
@@ -1707,29 +1731,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
      */
     f->f_stackdepth = -1;
     f->f_state = FRAME_EXECUTING;
-
-    if (co->co_opcache_flag < opcache_min_runs) {
-        co->co_opcache_flag++;
-        if (co->co_opcache_flag == opcache_min_runs) {
-            if (_PyCode_InitOpcache(co) < 0) {
-                goto exit_eval_frame;
-            }
-            if (co->co_argcount > 0) {
-                // Note: The optimized bytecode will be used on the *next* run.
-                if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
-                    goto exit_eval_frame;
-                }
-            }
-#if OPCACHE_STATS
-            opcache_code_objects_extra_mem +=
-                // While co_optimized_code isn't used until the next
-                // run, we can get away with using it right now.
-                PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT) +
-                sizeof(_PyOpcache) * co->co_opcache_size;
-            opcache_code_objects++;
-#endif
-        }
-    }
 
 #ifdef LLTRACE
     {
