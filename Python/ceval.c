@@ -1677,11 +1677,22 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         co->co_opcache_flag++;
         if (co->co_opcache_flag == opcache_min_runs) {
             if (co->co_argcount > 0) {
-                if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
+                PyObject *exc, *val, *tb;
+                _PyErr_Fetch(tstate, &exc, &val, &tb);
+                int res = _PyCode_Optimize(co, fastlocals[0]);
+                if (exc != NULL) {
+                    // XXX (eric) Normally we would chain any exception
+                    // from _PyCode_Optimize() onto the existing one.
+                    // However, we must preserve PyExc_GeneratorExit, etc.
+                    _PyErr_Clear(tstate);
+                    _PyErr_Restore(tstate, exc, val, tb);
+                }
+                else if (res < 0) {
                     goto exit_eval_frame;
                 }
                 co_code = _PyCode_CODE(co);
             }
+            // XXX (eric) Preserve exceptions here too?
             if (_PyCode_InitOpcache(co) < 0) {
                 goto exit_eval_frame;
             }
