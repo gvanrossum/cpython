@@ -1454,7 +1454,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         co->co_opcache_flag++;
         if (co->co_opcache_flag == OPCACHE_MIN_RUNS) {
             if (co->co_argcount > 0) {
-                // Note: The optimized bytecode will be used on the *next* run.
                 if (_PyCode_Optimize(co, fastlocals[0]) < 0) {
                     goto exit_eval_frame;
                 }
@@ -1465,8 +1464,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             }
 #if OPCACHE_STATS
             opcache_code_objects_extra_mem +=
-                // While co_optimized_code isn't used until the next
-                // run, we can get away with using it right now.
                 PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT) +
                 sizeof(_PyOpcache) * co->co_opcache_size;
             opcache_code_objects++;
