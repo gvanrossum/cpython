@@ -291,8 +291,7 @@ PyCode_New(int argcount, int kwonlyargcount,
 int
 _PyCode_InitOpcache(PyCodeObject *co)
 {
-    // XXX (eric) We should use _PyCode_CODE() but I'm not sure that's safe.
-    PyObject *co_code = co->co_code;
+    PyObject *co_code = _PyCode_CODE(co);
     Py_ssize_t co_size = PyBytes_Size(co_code) / sizeof(_Py_CODEUNIT);
     co->co_opcache_map = (unsigned char *)PyMem_Calloc(co_size, 1);
     if (co->co_opcache_map == NULL) {
@@ -697,8 +696,7 @@ code_sizeof(PyCodeObject *co, PyObject *Py_UNUSED(args))
     if (co->co_opcache != NULL) {
         assert(co->co_opcache_map != NULL);
         // co_opcache_map
-        // XXX (eric) Use _PyCode_CODE() here?
-        res += PyBytes_GET_SIZE(co->co_code) / sizeof(_Py_CODEUNIT);
+        res += PyBytes_GET_SIZE(_PyCode_CODE(co)) / sizeof(_Py_CODEUNIT);
         // co_opcache
         res += co->co_opcache_size * sizeof(_PyOpcache);
     }

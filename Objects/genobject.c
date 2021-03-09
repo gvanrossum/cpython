@@ -5,6 +5,7 @@
 #include "pycore_object.h"
 #include "pycore_pyerrors.h"      // _PyErr_ClearExcState()
 #include "pycore_pystate.h"       // _PyThreadState_GET()
+#include "pycore_code.h"          // _PyCode_CODE()
 #include "frameobject.h"
 #include "structmember.h"         // PyMemberDef
 #include "opcode.h"
@@ -346,8 +347,7 @@ _PyGen_yf(PyGenObject *gen)
     PyFrameObject *f = gen->gi_frame;
 
     if (f) {
-        // XXX (eric) Use _PyCode_CODE() here?
-        PyObject *bytecode = f->f_code->co_code;
+        PyObject *bytecode = _PyCode_CODE(f->f_code);
         unsigned char *code = (unsigned char *)PyBytes_AS_STRING(bytecode);
 
         if (f->f_lasti < 0) {
