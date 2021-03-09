@@ -346,6 +346,7 @@ _PyGen_yf(PyGenObject *gen)
     PyFrameObject *f = gen->gi_frame;
 
     if (f) {
+        // XXX (eric) Use _PyCode_CODE() here?
         PyObject *bytecode = f->f_code->co_code;
         unsigned char *code = (unsigned char *)PyBytes_AS_STRING(bytecode);
 
