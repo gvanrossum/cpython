@@ -109,6 +109,7 @@ top_block(int64_t stack)
 static int64_t *
 markblocks(PyCodeObject *code_obj, int len)
 {
+    // XXX (eric) Use _PyCode_CODE() here?
     const _Py_CODEUNIT *code =
         (const _Py_CODEUNIT *)PyBytes_AS_STRING(code_obj->co_code);
     int64_t *blocks = PyMem_New(int64_t, len+1);
@@ -399,6 +400,7 @@ frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno, void *Py_UNUSED(ignore
 
     /* PyCode_NewWithPosOnlyArgs limits co_code to be under INT_MAX so this
      * should never overflow. */
+    // XXX (eric) Use _PyCode_CODE() here?
     int len = (int)(PyBytes_GET_SIZE(f->f_code->co_code) / sizeof(_Py_CODEUNIT));
     int *lines = marklines(f->f_code, len);
     if (lines == NULL) {
