@@ -31,6 +31,7 @@
 #include "pydtrace.h"
 #include "setobject.h"
 #include "structmember.h"         // struct PyMemberDef, T_OFFSET_EX
+#include "pyvalue.h"
 
 #include <ctype.h>
 
@@ -1675,8 +1676,8 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
     names = co->co_names;
     consts = co->co_consts;
-    fastlocals = f->f_localsplus;
-    freevars = f->f_localsplus + co->co_nlocals;
+    fastlocals = (PyValue *) (f->f_localsplus);
+    freevars = fastlocals + co->co_nlocals;
     assert(PyBytes_Check(co->co_code));
     assert(PyBytes_GET_SIZE(co->co_code) <= INT_MAX);
     assert(PyBytes_GET_SIZE(co->co_code) % sizeof(_Py_CODEUNIT) == 0);
@@ -4824,8 +4825,8 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
     if (f == NULL) {
         return NULL;
     }
-    PyObject **fastlocals = f->f_localsplus;
-    PyObject **freevars = f->f_localsplus + co->co_nlocals;
+    PyValue *fastlocals = f->f_localsplus;
+    PyValue *freevars = fastlocals + co->co_nlocals;
 
     /* Create a dictionary for keyword parameters (**kwags) */
     PyObject *kwdict;

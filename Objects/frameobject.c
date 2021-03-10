@@ -7,6 +7,7 @@
 #include "frameobject.h"          // PyFrameObject
 #include "opcode.h"               // EXTENDED_ARG
 #include "structmember.h"         // PyMemberDef
+#include "pyvalue.h"              // PyValue_CLEAR()
 
 #define OFF(x) offsetof(PyFrameObject, x)
 
@@ -294,8 +295,8 @@ frame_stack_pop(PyFrameObject *f)
 {
     assert(f->f_stackdepth >= 0);
     f->f_stackdepth--;
-    PyObject *v = f->f_valuestack[f->f_stackdepth];
-    Py_DECREF(v);
+    PyValue v = f->f_valuestack[f->f_stackdepth];
+    PyValue_DECREF(v);
 }
 
 static void
@@ -576,9 +577,9 @@ frame_dealloc(PyFrameObject *f)
 
     Py_TRASHCAN_SAFE_BEGIN(f)
     /* Kill all local variables */
-    PyObject **valuestack = f->f_valuestack;
-    for (PyObject **p = f->f_localsplus; p < valuestack; p++) {
-        Py_CLEAR(*p);
+    PyValue *valuestack = f->f_valuestack;
+    for (PyValue *p = f->f_localsplus; p < valuestack; p++) {
+        PyValue_CLEAR(*p);
     }
 
     /* Free stack */
@@ -637,9 +638,12 @@ frame_traverse(PyFrameObject *f, visitproc visit, void *arg)
     Py_VISIT(f->f_trace);
 
     /* locals */
-    PyObject **fastlocals = f->f_localsplus;
+    PyValue *fastlocals = f->f_localsplus;
     for (Py_ssize_t i = frame_nslots(f); --i >= 0; ++fastlocals) {
-        Py_VISIT(*fastlocals);
+        if (PyValue_IsObject(*fastlocals)) {
+            PyObject *ob = PyValue_AsObject(*fastlocals);
+            Py_VISIT(ob);
+        }
     }
 
     /* stack */
@@ -662,14 +666,14 @@ frame_tp_clear(PyFrameObject *f)
     Py_CLEAR(f->f_trace);
 
     /* locals */
-    PyObject **fastlocals = f->f_localsplus;
+    PyValue *fastlocals = f->f_localsplus;
     for (Py_ssize_t i = frame_nslots(f); --i >= 0; ++fastlocals) {
-        Py_CLEAR(*fastlocals);
+        PyValue_CLEAR(*fastlocals);
     }
 
     /* stack */
     for (int i = 0; i < f->f_stackdepth; i++) {
-        Py_CLEAR(f->f_valuestack[i]);
+        PyValue_CLEAR(f->f_valuestack[i]);
     }
     f->f_stackdepth = 0;
     return 0;
@@ -812,7 +816,7 @@ frame_alloc(PyCodeObject *code)
     extras = code->co_nlocals + ncells + nfrees;
     f->f_valuestack = f->f_localsplus + extras;
     for (Py_ssize_t i=0; i < extras; i++) {
-        f->f_localsplus[i] = NULL;
+        f->f_localsplus[i] = PyValue_NULL;
     }
     return f;
 }
@@ -918,7 +922,7 @@ PyFrame_BlockPop(PyFrameObject *f)
  */
 
 static int
-map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
+map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
             int deref)
 {
     Py_ssize_t j;
@@ -927,7 +931,7 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
     assert(PyTuple_Size(map) >= nmap);
     for (j=0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
-        PyObject *value = values[j];
+        PyObject *value = PyValue_Box(values[j]);
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
             assert(PyCell_Check(value));
@@ -971,7 +975,7 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
 */
 
 static void
-dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
+dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
             int deref, int clear)
 {
     Py_ssize_t j;
@@ -988,15 +992,16 @@ dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
             if (!clear)
                 continue;
         }
+        PyObject *vj = PyValue_Box(values[j]);
         if (deref) {
-            assert(PyCell_Check(values[j]));
-            if (PyCell_GET(values[j]) != value) {
-                if (PyCell_Set(values[j], value) < 0)
+            assert(PyCell_Check(vj));
+            if (PyCell_GET(vj) != value) {
+                if (PyCell_Set(vj, value) < 0)
                     PyErr_Clear();
             }
-        } else if (values[j] != value) {
+        } else if (vj != value) {
             Py_XINCREF(value);
-            Py_XSETREF(values[j], value);
+            Py_XSETREF(vj, value);
         }
         Py_XDECREF(value);
     }
@@ -1007,7 +1012,7 @@ PyFrame_FastToLocalsWithError(PyFrameObject *f)
 {
     /* Merge fast locals into f->f_locals */
     PyObject *locals, *map;
-    PyObject **fast;
+    PyValue *fast;
     PyCodeObject *co;
     Py_ssize_t j;
     Py_ssize_t ncells, nfreevars;
@@ -1079,7 +1084,7 @@ PyFrame_LocalsToFast(PyFrameObject *f, int clear)
 {
     /* Merge f->f_locals into fast locals */
     PyObject *locals, *map;
-    PyObject **fast;
+    PyValue *fast;
     PyObject *error_type, *error_value, *error_traceback;
     PyCodeObject *co;
     Py_ssize_t j;

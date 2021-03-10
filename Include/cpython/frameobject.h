@@ -32,7 +32,7 @@ struct _frame {
     PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
     PyObject *f_globals;        /* global symbol table (PyDictObject) */
     PyObject *f_locals;         /* local symbol table (any mapping) */
-    PyObject **f_valuestack;    /* points after the last local */
+    PyValue *f_valuestack;    /* points after the last local */
     PyObject *f_trace;          /* Trace function */
     int f_stackdepth;           /* Depth of value stack */
     char f_trace_lines;         /* Emit per-line trace events? */
@@ -46,7 +46,7 @@ struct _frame {
     int f_iblock;               /* index in f_blockstack */
     PyFrameState f_state;       /* What state the frame is in */
     PyTryBlock f_blockstack[CO_MAXBLOCKS]; /* for try and loop blocks */
-    PyObject *f_localsplus[1];  /* locals+stack, dynamically sized */
+    PyValue f_localsplus[1];  /* locals+stack, dynamically sized */
 };
 
 static inline int _PyFrame_IsRunnable(struct _frame *f) {

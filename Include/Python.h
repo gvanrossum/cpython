@@ -88,6 +88,7 @@
 #include "objimpl.h"
 #include "typeslots.h"
 #include "pyhash.h"
+#include "pyvalue.h"
 
 #include "cpython/pydebug.h"
 

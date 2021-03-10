@@ -8,6 +8,7 @@
 #include "frameobject.h"
 #include "structmember.h"         // PyMemberDef
 #include "opcode.h"
+#include "pyvalue.h"
 
 static PyObject *gen_close(PyGenObject *, PyObject *);
 static PyObject *async_gen_asend_new(PyAsyncGenObject *, PyObject *);
@@ -194,7 +195,7 @@ gen_send_ex2(PyGenObject *gen, PyObject *arg, PyObject **presult,
         /* Push arg onto the frame's value stack */
         result = arg ? arg : Py_None;
         Py_INCREF(result);
-        gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth] = result;
+        gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth] = PyValue_FromObject(result);
         gen->gi_frame->f_stackdepth++;
     }
 
@@ -360,7 +361,7 @@ _PyGen_yf(PyGenObject *gen)
         if (code[(f->f_lasti+1)*sizeof(_Py_CODEUNIT)] != YIELD_FROM)
             return NULL;
         assert(f->f_stackdepth > 0);
-        yf = f->f_valuestack[f->f_stackdepth-1];
+        yf = PyValue_Box(f->f_valuestack[f->f_stackdepth-1]);
         Py_INCREF(yf);
     }
 
@@ -476,7 +477,7 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
             /* Pop subiterator from stack */
             assert(gen->gi_frame->f_stackdepth > 0);
             gen->gi_frame->f_stackdepth--;
-            ret = gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth];
+            ret = PyValue_Box(gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth]);
             assert(ret == yf);
             Py_DECREF(ret);
             /* Termination repetition of YIELD_FROM */
