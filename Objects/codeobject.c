@@ -1259,8 +1259,7 @@ PyCode_Addr2Line(PyCodeObject *co, int addrq)
     if (addrq == -1) {
         return co->co_firstlineno;
     }
-    // XXX (eric) Use _PyCode_CODE() here?
-    assert(addrq >= 0 && addrq < PyBytes_GET_SIZE(co->co_code));
+    assert(addrq >= 0 && addrq < PyBytes_GET_SIZE(_PyCode_CODE(co)));
     PyCodeAddressRange bounds;
     _PyCode_InitAddressRange(co, &bounds);
     return _PyCode_CheckLineNumber(addrq, &bounds);
