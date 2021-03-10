@@ -362,7 +362,7 @@ _PyGen_yf(PyGenObject *gen)
             return NULL;
         assert(f->f_stackdepth > 0);
         yf = PyValue_Box(f->f_valuestack[f->f_stackdepth-1]);
-        Py_INCREF(yf);
+        Py_XINCREF(yf);
     }
 
     return yf;
@@ -473,16 +473,14 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
         }
         Py_DECREF(yf);
         if (!ret) {
-            PyObject *val;
             /* Pop subiterator from stack */
             assert(gen->gi_frame->f_stackdepth > 0);
             gen->gi_frame->f_stackdepth--;
-            ret = PyValue_Box(gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth]);
-            assert(ret == yf);
-            Py_DECREF(ret);
+            PyValue_DECREF(gen->gi_frame->f_valuestack[gen->gi_frame->f_stackdepth]);
             /* Termination repetition of YIELD_FROM */
             assert(gen->gi_frame->f_lasti >= 0);
-            gen->gi_frame->f_lasti += 1;
+            gen->gi_frame->f_lasti += sizeof(_Py_CODEUNIT);
+            PyObject *val;
             if (_PyGen_FetchStopIterationValue(&val) == 0) {
                 ret = gen_send(gen, val);
                 Py_DECREF(val);

@@ -55,8 +55,8 @@ typedef struct {
 _Py_IDENTIFIER(__name__);
 
 /* Forward declarations */
-Py_LOCAL_INLINE(PyObject *) call_function(
-    PyThreadState *tstate, PyTraceInfo *, PyObject ***pp_stack,
+Py_LOCAL_INLINE(PyValue) call_function(
+    PyThreadState *tstate, PyTraceInfo *, PyValue **pp_stack,
     Py_ssize_t oparg, PyObject *kwnames);
 static PyObject * do_call_core(
     PyThreadState *tstate, PyTraceInfo *, PyObject *func,
@@ -1452,9 +1452,9 @@ eval_frame_handle_pending(PyThreadState *tstate)
    This is because it is possible that during the DECREF the frame is
    accessed by other code (e.g. a __del__ method or gc.collect()) and the
    variable would be pointing to already-freed memory. */
-#define SETLOCAL(i, value)      do { PyObject *tmp = GETLOCAL(i); \
+#define SETLOCAL(i, value)      do { PyValue tmp = GETLOCAL(i); \
                                      GETLOCAL(i) = value; \
-                                     Py_XDECREF(tmp); } while (0)
+                                     PyValue_XDECREF(tmp); } while (0)
 
 
 #define UNWIND_BLOCK(b) \
@@ -1596,11 +1596,11 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 #ifdef DXPAIRS
     int lastopcode = 0;
 #endif
-    PyObject **stack_pointer;  /* Next free slot in value stack */
+    PyValue *stack_pointer;  /* Next free slot in value stack */
     const _Py_CODEUNIT *next_instr;
     int opcode;        /* Current opcode */
     int oparg;         /* Current opcode argument, if any */
-    PyObject **fastlocals, **freevars;
+    PyValue *fastlocals, *freevars;
     PyObject *retval = NULL;            /* Return value */
     struct _ceval_state * const ceval2 = &tstate->interp->ceval;
     _Py_atomic_int * const eval_breaker = &ceval2->eval_breaker;
@@ -1856,14 +1856,14 @@ main_loop:
         }
 
         case TARGET(LOAD_FAST): {
-            PyObject *value = GETLOCAL(oparg);
-            if (value == NULL) {
+            PyValue value = GETLOCAL(oparg);
+            if (value == PyValue_NULL) {
                 format_exc_check_arg(tstate, PyExc_UnboundLocalError,
                                      UNBOUNDLOCAL_ERROR_MSG,
                                      PyTuple_GetItem(co->co_varnames, oparg));
                 goto error;
             }
-            Py_INCREF(value);
+            PyValue_INCREF(value);
             PUSH(value);
             DISPATCH();
         }
@@ -4251,7 +4251,7 @@ main_loop:
 
         case TARGET(CALL_FUNCTION): {
             PREDICTED(CALL_FUNCTION);
-            PyObject **sp, *res;
+            PyValue *sp, res;
             sp = stack_pointer;
             res = call_function(tstate, &trace_info, &sp, oparg, NULL);
             stack_pointer = sp;
@@ -5897,19 +5897,19 @@ trace_call_function(PyThreadState *tstate,
 
 /* Issue #29227: Inline call_function() into _PyEval_EvalFrameDefault()
    to reduce the stack consumption. */
-Py_LOCAL_INLINE(PyObject *) _Py_HOT_FUNCTION
+Py_LOCAL_INLINE(PyValue) _Py_HOT_FUNCTION
 call_function(PyThreadState *tstate,
               PyTraceInfo *trace_info,
-              PyObject ***pp_stack,
+              PyValue **pp_stack,
               Py_ssize_t oparg,
               PyObject *kwnames)
 {
-    PyObject **pfunc = (*pp_stack) - oparg - 1;
-    PyObject *func = *pfunc;
+    PyValue *pfunc = (*pp_stack) - oparg - 1;
+    PyValue func = *pfunc;
     PyObject *x, *w;
     Py_ssize_t nkwargs = (kwnames == NULL) ? 0 : PyTuple_GET_SIZE(kwnames);
     Py_ssize_t nargs = oparg - nkwargs;
-    PyObject **stack = (*pp_stack) - nargs - nkwargs;
+    PyValue *stack = (*pp_stack) - nargs - nkwargs;
 
     if (tstate->use_tracing) {
         x = trace_call_function(tstate, trace_info, func, stack, nargs, kwnames);

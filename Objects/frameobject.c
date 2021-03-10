@@ -931,7 +931,14 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Size(map) >= nmap);
     for (j=0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
-        PyObject *value = PyValue_Box(values[j]);
+        PyObject *box = NULL;
+        if (values[j] != PyValue_NULL) {
+            box = PyValue_Box(values[j]);
+            if (!box) {
+                return -1;
+            }
+        }
+        PyObject *value = box;
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
             assert(PyCell_Check(value));
@@ -939,16 +946,22 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
         }
         if (value == NULL) {
             if (PyObject_DelItem(dict, key) != 0) {
-                if (PyErr_ExceptionMatches(PyExc_KeyError))
+                if (PyErr_ExceptionMatches(PyExc_KeyError)) {
                     PyErr_Clear();
-                else
+                }
+                else {
+                    Py_XDECREF(box);
                     return -1;
+                }
             }
         }
         else {
-            if (PyObject_SetItem(dict, key, value) != 0)
+            if (PyObject_SetItem(dict, key, value) != 0) {
+                Py_XDECREF(box);
                 return -1;
+            }
         }
+        Py_XDECREF(box);
     }
     return 0;
 }
@@ -1191,4 +1204,41 @@ _PyEval_BuiltinsFromGlobals(PyThreadState *tstate, PyObject *globals)
     }
 
     return _PyEval_GetBuiltins(tstate);
+}
+
+// Boxing and unboxing
+// TODO: Move to its own file
+
+PyObject *
+PyValue_Box(PyValue v)
+{
+    if (PyValue_IsObject(v)) {
+        PyObject *o = PyValue_AsObject(v);
+        if (o == NULL) {
+            PyErr_SetString(PyExc_SystemError, "can't box NULL");
+            assert(0);
+            return NULL;
+        }
+        Py_INCREF(o);
+        return o;
+    }
+    if (PyValue_IsInt(v)) {
+        long long i = PyValue_AsInt(v);
+        return PyLong_FromLongLong(i);
+    }
+    if (PyValue_IsFloat(v)) {
+        double x = PyValue_AsFloat(v);
+        return PyFloat_FromDouble(x);
+    }
+    PyErr_Format(PyExc_SystemError, "can't box value with tag 0o%o", PyValue_Tag(v));
+    assert(0);
+    return NULL;
+}
+
+PyValue
+PyValue_Unbox(PyObject *o)
+{
+    // TODO: ints, floats
+    Py_XINCREF(o);
+    return PyValue_FromObject(o);
 }

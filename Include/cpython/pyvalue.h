@@ -64,7 +64,10 @@ Tag |  Meaning                  | Encoding
 #define PyValue_Error (PyValue_FromObject((PyObject *)NULL))
 #define PyValue_NULL (PyValue_FromObject((PyObject *)NULL))
 
-// Boxing and unboxing API (Box() returns a new reference!!!)
+// Boxing and unboxing API
+// - These return new references
+// - On error they return NULL
+// - If the original value was already NULL they set an error
 PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
 PyObject *PyValue_Box(PyValue);  // Boxes non-pointer values
 
