@@ -1,3 +1,10 @@
+#ifndef Py_PYVALUE_H
+#define Py_PYVALUE_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if SIZEOF_VOID_P == 4
 #error "Don't know how to do this for 32-bit arch yet"
 #elif SIZEOF_VOID_P == 8
@@ -15,3 +22,8 @@ typedef int64_t PyValue;  // TODO: Make it a struct for better type checking?
 #  include  "cpython/pyvalue.h"
 #  undef Py_CPYTHON_PYVALUE_H
 #endif
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* !Py_PYVALUE_H */
