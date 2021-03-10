@@ -1400,18 +1400,18 @@ eval_frame_handle_pending(PyThreadState *tstate)
    co_stacksize are ints. */
 #define STACK_LEVEL()     ((int)(stack_pointer - f->f_valuestack))
 #define EMPTY()           (STACK_LEVEL() == 0)
-#define TOP()             (stack_pointer[-1])
-#define SECOND()          (stack_pointer[-2])
-#define THIRD()           (stack_pointer[-3])
-#define FOURTH()          (stack_pointer[-4])
-#define PEEK(n)           (stack_pointer[-(n)])
-#define SET_TOP(v)        (stack_pointer[-1] = (v))
-#define SET_SECOND(v)     (stack_pointer[-2] = (v))
-#define SET_THIRD(v)      (stack_pointer[-3] = (v))
-#define SET_FOURTH(v)     (stack_pointer[-4] = (v))
+#define TOP()             PyValue_AsObject(stack_pointer[-1])
+#define SECOND()          PyValue_AsObject(stack_pointer[-2])
+#define THIRD()           PyValue_AsObject(stack_pointer[-3])
+#define FOURTH()          PyValue_AsObject(stack_pointer[-4])
+#define PEEK(n)           PyValue_AsObject(stack_pointer[-(n)])
+#define SET_TOP(v)        (stack_pointer[-1] = PyValue_FromObject(v))
+#define SET_SECOND(v)     (stack_pointer[-2] = PyValue_FromObject(v))
+#define SET_THIRD(v)      (stack_pointer[-3] = PyValue_FromObject(v))
+#define SET_FOURTH(v)     (stack_pointer[-4] = PyValue_FromObject(v))
 #define BASIC_STACKADJ(n) (stack_pointer += n)
-#define BASIC_PUSH(v)     (*stack_pointer++ = (v))
-#define BASIC_POP()       (*--stack_pointer)
+#define BASIC_PUSH(v)     (*stack_pointer++ = PyValue_FromObject(v))
+#define BASIC_POP()       PyValue_AsObject(*--stack_pointer)
 
 #ifdef LLTRACE
 #define PUSH(v)         { (void)(BASIC_PUSH(v), \
@@ -1453,7 +1453,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
    accessed by other code (e.g. a __del__ method or gc.collect()) and the
    variable would be pointing to already-freed memory. */
 #define SETLOCAL(i, value)      do { PyValue tmp = GETLOCAL(i); \
-                                     GETLOCAL(i) = value; \
+                                     GETLOCAL(i) = PyValue_FromObject(value); \
                                      PyValue_XDECREF(tmp); } while (0)
 
 
@@ -3132,7 +3132,7 @@ main_loop:
             if (empty == NULL) {
                 goto error;
             }
-            str = _PyUnicode_JoinArray(empty, stack_pointer - oparg, oparg);
+            str = _PyUnicode_JoinArray(empty, (PyObject **)(stack_pointer - oparg), oparg);
             Py_DECREF(empty);
             if (str == NULL)
                 goto error;
@@ -5320,7 +5320,7 @@ raise_error:
 
 static int
 unpack_iterable(PyThreadState *tstate, PyObject *v,
-                int argcnt, int argcntafter, PyObject **sp)
+                int argcnt, int argcntafter, PyValue *sp)
 {
     int i = 0, j = 0;
     Py_ssize_t ll = 0;
@@ -6364,17 +6364,17 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
         switch (opcode) {
         case STORE_FAST:
         {
-            PyObject **fastlocals = f->f_localsplus;
+            PyValue *fastlocals = f->f_localsplus;
             if (GETLOCAL(oparg) == v)
-                SETLOCAL(oparg, NULL);
+                SETLOCAL(oparg, (PyObject *)NULL);
             break;
         }
         case STORE_DEREF:
         {
-            PyObject **freevars = (f->f_localsplus +
+            PyValue *freevars = (f->f_localsplus +
                                    f->f_code->co_nlocals);
-            PyObject *c = freevars[oparg];
-            if (PyCell_GET(c) ==  v) {
+            PyObject *c = PyValue_AsObject(freevars[oparg]);
+            if (PyCell_GET(c) == v) {
                 PyCell_SET(c, NULL);
                 Py_DECREF(v);
             }

@@ -10,8 +10,8 @@
 /*
 Tag  |  Meaning     | Encoding
 -----|--------------|------------------
-0    | int (31 bit) | val<<1
-1    | PyObject *   | ((intptr_t)val)-1
+1    | int (31 bit) | (val<<1) | 1
+0    | PyObject *   | val
 
 - Large ints and all floats remain PyObject *
 */
@@ -21,9 +21,9 @@ Tag  |  Meaning     | Encoding
 /*
 Tag |  Meaning                  | Encoding
 ----|---------------------------|--------------------
-0   | int (61 bit)              | val<<3
-1-6 | float (abs(val) < 2**512) | rotate_bits(val, 4)
-7   | PyObject *                | ((intptr_t)val)-1
+1   | int (61 bit)              | (val<<3) | 1
+2-7 | float (abs(val) < 2**512) | rotate_bits(val, 4)
+0   | PyObject *                | val
 
 - Large ints and floats with extreme exponents remain PyObject *
 - Floats are currently not supported
@@ -33,8 +33,8 @@ Tag |  Meaning                  | Encoding
 #define PyValue_Tag(x) ((x) & 7)
 
 // Tag values
-#define PyValue_TagInt 0
-#define PyValue_TagObject 7
+#define PyValue_TagInt 1
+#define PyValue_TagObject 0
 
 // Macros to check what we have
 #define PyValue_IsInt(x) (PyValue_Tag(x) == PyValue_TagInt)
@@ -45,16 +45,16 @@ Tag |  Meaning                  | Encoding
 #ifdef Py_DEBUG
 #define PyValue_AsInt(x) (PyValue_IsInt(x) ? (x) >> 3 : (abort(), 0))
 #define PyValue_AsFloat(x) (0.0)  // XXX TODO
-#define PyValue_AsObject(x) (PyValue_IsObject(x) ? ((PyObject *)((x) + 1)) : (abort(), (PyObject *)NULL))
+#define PyValue_AsObject(x) (PyValue_IsObject(x) ? ((PyObject *)(x)) : (abort(), (PyObject *)NULL))
 #else /* Py_DEBUG */
 #define PyValue_AsInt(x) ((x) >> 3)
 #define PyValue_AsFloat(x) (0.0)  // XXX TODO
-#define PyValue_AsObject(x) ((PyObject *)((x) + 1))
+#define PyValue_AsObject(x) ((PyObject *)(x))
 #endif /* Py_DEBUG */
 
 // Encoding macros
-#define PyValue_FromInt(x) ((PyValue)((x) << 3)
-#define PyValue_FromObject(x) (((PyValue)(x)) - 1)
+#define PyValue_FromInt(x) (((PyValue)((x) << 3) | PyValue_TagInt)
+#define PyValue_FromObject(x) (((PyValue)(x)) | PyValue_TagObject)
 
 #else
 #error "This only works for 32- and 64-bit pointers"
