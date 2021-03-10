@@ -1676,9 +1676,14 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     if (co->co_opcache_flag < opcache_min_runs) {
         co->co_opcache_flag++;
         if (co->co_opcache_flag == opcache_min_runs) {
-            if (co->co_argcount > 0) {
+            // With generators we can reach this point with an already
+            // started frame, which causes serious headaches for
+            // _PyCode_Optimize().  So we make sure we only optimize
+            // at the beginning of a frame.
+            if (co->co_argcount > 0 && f->f_lasti == -1) {
                 PyObject *exc, *val, *tb;
                 _PyErr_Fetch(tstate, &exc, &val, &tb);
+
                 int res = _PyCode_Optimize(co, fastlocals[0]);
                 if (exc != NULL) {
                     // XXX (eric) Normally we would chain any exception
@@ -1692,6 +1697,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 }
                 co_code = _PyCode_CODE(co);
             }
+            // XXX (eric) Do the generator check here too?
             // XXX (eric) Preserve exceptions here too?
             if (_PyCode_InitOpcache(co) < 0) {
                 goto exit_eval_frame;
