@@ -1116,7 +1116,7 @@ fail:
 
 
 static int do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
-static int unpack_iterable(PyThreadState *, PyObject *, int, int, PyObject **);
+static int unpack_iterable(PyThreadState *, PyObject *, int, int, PyValue *);
 
 #define _Py_TracingPossible(ceval) ((ceval)->tracing_possible)
 
@@ -3034,9 +3034,9 @@ main_loop:
         }
 
         case TARGET(DELETE_FAST): {
-            PyObject *v = GETLOCAL(oparg);
-            if (v != NULL) {
-                SETLOCAL(oparg, NULL);
+            PyValue v = GETLOCAL(oparg);
+            if (v != PyValue_NULL) {
+                SETLOCAL(oparg, PyValue_NULL);
                 DISPATCH();
             }
             format_exc_check_arg(
@@ -3048,7 +3048,7 @@ main_loop:
         }
 
         case TARGET(DELETE_DEREF): {
-            PyObject *cell = freevars[oparg];
+            PyObject *cell = PyValue_AsObject(freevars[oparg]);
             PyObject *oldobj = PyCell_GET(cell);
             if (oldobj != NULL) {
                 PyCell_SET(cell, NULL);
@@ -3060,7 +3060,7 @@ main_loop:
         }
 
         case TARGET(LOAD_CLOSURE): {
-            PyObject *cell = freevars[oparg];
+            PyObject *cell = PyValue_AsObject(freevars[oparg]);
             Py_INCREF(cell);
             PUSH(cell);
             DISPATCH();
@@ -3093,7 +3093,7 @@ main_loop:
                 }
             }
             if (!value) {
-                PyObject *cell = freevars[oparg];
+                PyObject *cell = PyValue_AsObject(freevars[oparg]);
                 value = PyCell_GET(cell);
                 if (value == NULL) {
                     format_exc_unbound(tstate, co, oparg);
@@ -3106,7 +3106,7 @@ main_loop:
         }
 
         case TARGET(LOAD_DEREF): {
-            PyObject *cell = freevars[oparg];
+            PyObject *cell = PyValue_AsObject(freevars[oparg]);
             PyObject *value = PyCell_GET(cell);
             if (value == NULL) {
                 format_exc_unbound(tstate, co, oparg);
@@ -3119,7 +3119,7 @@ main_loop:
 
         case TARGET(STORE_DEREF): {
             PyObject *v = POP();
-            PyObject *cell = freevars[oparg];
+            PyObject *cell = PyValue_AsObject(freevars[oparg]);
             PyObject *oldobj = PyCell_GET(cell);
             PyCell_SET(cell, v);
             Py_XDECREF(oldobj);
@@ -4201,7 +4201,8 @@ main_loop:
 
         case TARGET(CALL_METHOD): {
             /* Designed to work in tamdem with LOAD_METHOD. */
-            PyObject **sp, *res, *meth;
+            PyValue *sp;
+            PyObject *res, *meth;
 
             sp = stack_pointer;
 
