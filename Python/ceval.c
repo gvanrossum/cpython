@@ -3036,7 +3036,7 @@ main_loop:
         case TARGET(DELETE_FAST): {
             PyValue v = GETLOCAL(oparg);
             if (v != PyValue_NULL) {
-                SETLOCAL(oparg, PyValue_NULL);
+                SETLOCAL(oparg, (PyObject *)NULL);
                 DISPATCH();
             }
             format_exc_check_arg(
@@ -4222,7 +4222,7 @@ main_loop:
                    `callable` will be POPed by call_function.
                    NULL will will be POPed manually later.
                 */
-                res = call_function(tstate, &trace_info, &sp, oparg, NULL);
+                res = PyValue_AsObject(call_function(tstate, &trace_info, &sp, oparg, NULL));
                 stack_pointer = sp;
                 (void)POP(); /* POP the NULL. */
             }
@@ -4239,7 +4239,7 @@ main_loop:
                   We'll be passing `oparg + 1` to call_function, to
                   make it accept the `self` as a first argument.
                 */
-                res = call_function(tstate, &trace_info, &sp, oparg + 1, NULL);
+                res = PyValue_AsObject(call_function(tstate, &trace_info, &sp, oparg + 1, NULL));
                 stack_pointer = sp;
             }
 
@@ -4257,7 +4257,7 @@ main_loop:
             res = call_function(tstate, &trace_info, &sp, oparg, NULL);
             stack_pointer = sp;
             PUSH(res);
-            if (res == NULL) {
+            if (res == PyValue_NULL) {
                 goto error;
             }
             CHECK_EVAL_BREAKER();
@@ -4265,7 +4265,8 @@ main_loop:
         }
 
         case TARGET(CALL_FUNCTION_KW): {
-            PyObject **sp, *res, *names;
+            PyValue *sp, res;
+            PyObject *names;
 
             names = POP();
             assert(PyTuple_Check(names));
@@ -4277,7 +4278,7 @@ main_loop:
             PUSH(res);
             Py_DECREF(names);
 
-            if (res == NULL) {
+            if (res == PyValue_NULL) {
                 goto error;
             }
             CHECK_EVAL_BREAKER();
@@ -4652,7 +4653,7 @@ format_missing(PyThreadState *tstate, const char *kind,
 static void
 missing_arguments(PyThreadState *tstate, PyCodeObject *co,
                   Py_ssize_t missing, Py_ssize_t defcount,
-                  PyObject **fastlocals, PyObject *qualname)
+                  PyValue *fastlocals, PyObject *qualname)
 {
     Py_ssize_t i, j = 0;
     Py_ssize_t start, end;
@@ -4673,7 +4674,7 @@ missing_arguments(PyThreadState *tstate, PyCodeObject *co,
         end = start + co->co_kwonlyargcount;
     }
     for (i = start; i < end; i++) {
-        if (GETLOCAL(i) == NULL) {
+        if (GETLOCAL(i) == PyValue_NULL) {
             PyObject *raw = PyTuple_GET_ITEM(co->co_varnames, i);
             PyObject *name = PyObject_Repr(raw);
             if (name == NULL) {
@@ -4691,7 +4692,7 @@ missing_arguments(PyThreadState *tstate, PyCodeObject *co,
 static void
 too_many_positional(PyThreadState *tstate, PyCodeObject *co,
                     Py_ssize_t given, PyObject *defaults,
-                    PyObject **fastlocals, PyObject *qualname)
+                    PyValue *fastlocals, PyObject *qualname)
 {
     int plural;
     Py_ssize_t kwonly_given = 0;
@@ -4702,7 +4703,7 @@ too_many_positional(PyThreadState *tstate, PyCodeObject *co,
     assert((co->co_flags & CO_VARARGS) == 0);
     /* Count missing keyword-only args. */
     for (i = co_argcount; i < co_argcount + co->co_kwonlyargcount; i++) {
-        if (GETLOCAL(i) != NULL) {
+        if (GETLOCAL(i) != PyValue_NULL) {
             kwonly_given++;
         }
     }
@@ -4930,7 +4931,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
             continue;
 
         kw_found:
-            if (GETLOCAL(j) != NULL) {
+            if (GETLOCAL(j) != PyValue_NULL) {
                 _PyErr_Format(tstate, PyExc_TypeError,
                             "%U() got multiple values for argument '%S'",
                           con->fc_qualname, keyword);
@@ -4954,7 +4955,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         Py_ssize_t m = co->co_argcount - defcount;
         Py_ssize_t missing = 0;
         for (i = argcount; i < m; i++) {
-            if (GETLOCAL(i) == NULL) {
+            if (GETLOCAL(i) == PyValue_NULL) {
                 missing++;
             }
         }
@@ -4970,7 +4971,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         if (defcount) {
             PyObject **defs = &PyTuple_GET_ITEM(con->fc_defaults, 0);
             for (; i < defcount; i++) {
-                if (GETLOCAL(m+i) == NULL) {
+                if (GETLOCAL(m+i) == PyValue_NULL) {
                     PyObject *def = defs[i];
                     Py_INCREF(def);
                     SETLOCAL(m+i, def);
@@ -4983,7 +4984,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
     if (co->co_kwonlyargcount > 0) {
         Py_ssize_t missing = 0;
         for (i = co->co_argcount; i < total_args; i++) {
-            if (GETLOCAL(i) != NULL)
+            if (GETLOCAL(i) != PyValue_NULL)
                 continue;
             PyObject *varname = PyTuple_GET_ITEM(co->co_varnames, i);
             if (con->fc_kwdefaults != NULL) {
@@ -5014,9 +5015,9 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         /* Possibly account for the cell variable being an argument. */
         if (co->co_cell2arg != NULL &&
             (arg = co->co_cell2arg[i]) != CO_CELL_NOT_AN_ARG) {
-            c = PyCell_New(GETLOCAL(arg));
+            c = PyCell_New(PyValue_AsObject(GETLOCAL(arg)));
             /* Clear the local copy. */
-            SETLOCAL(arg, NULL);
+            SETLOCAL(arg, (PyObject *)NULL);
         }
         else {
             c = PyCell_New(NULL);
@@ -5030,7 +5031,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
     for (i = 0; i < PyTuple_GET_SIZE(co->co_freevars); ++i) {
         PyObject *o = PyTuple_GET_ITEM(con->fc_closure, i);
         Py_INCREF(o);
-        freevars[PyTuple_GET_SIZE(co->co_cellvars) + i] = o;
+        freevars[PyTuple_GET_SIZE(co->co_cellvars) + i] = PyValue_FromObject(o);
     }
 
     return f;
@@ -5363,7 +5364,7 @@ unpack_iterable(PyThreadState *tstate, PyObject *v,
             }
             goto Error;
         }
-        *--sp = w;
+        *--sp = PyValue_FromObject(w);
     }
 
     if (argcntafter == -1) {
@@ -5385,7 +5386,7 @@ unpack_iterable(PyThreadState *tstate, PyObject *v,
     l = PySequence_List(it);
     if (l == NULL)
         goto Error;
-    *--sp = l;
+    *--sp = PyValue_FromObject(l);
     i++;
 
     ll = PyList_GET_SIZE(l);
@@ -5398,7 +5399,7 @@ unpack_iterable(PyThreadState *tstate, PyObject *v,
 
     /* Pop the "after-variable" args off the list. */
     for (j = argcntafter; j > 0; j--, i++) {
-        *--sp = PyList_GET_ITEM(l, ll - j);
+        *--sp = PyValue_FromObject(PyList_GET_ITEM(l, ll - j));
     }
     /* Resize the list. */
     Py_SET_SIZE(l, ll - argcntafter);
@@ -5906,11 +5907,12 @@ call_function(PyThreadState *tstate,
               PyObject *kwnames)
 {
     PyValue *pfunc = (*pp_stack) - oparg - 1;
-    PyValue func = *pfunc;
+    PyObject *func = PyValue_AsObject(*pfunc);
     PyObject *x, *w;
     Py_ssize_t nkwargs = (kwnames == NULL) ? 0 : PyTuple_GET_SIZE(kwnames);
     Py_ssize_t nargs = oparg - nkwargs;
-    PyValue *stack = (*pp_stack) - nargs - nkwargs;
+    PyObject **stack = (PyObject **) ((*pp_stack) - nargs - nkwargs);
+    // TODO: Convert stack in-place from PyValue to PyObject* (boxing in-place)
 
     if (tstate->use_tracing) {
         x = trace_call_function(tstate, trace_info, func, stack, nargs, kwnames);
@@ -5923,11 +5925,11 @@ call_function(PyThreadState *tstate,
 
     /* Clear the stack of the function object. */
     while ((*pp_stack) > pfunc) {
-        w = EXT_POP(*pp_stack);
+        w = PyValue_AsObject(EXT_POP(*pp_stack));
         Py_DECREF(w);
     }
 
-    return x;
+    return PyValue_FromObject(x);
 }
 
 static PyObject *
@@ -6366,7 +6368,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
         case STORE_FAST:
         {
             PyValue *fastlocals = f->f_localsplus;
-            if (GETLOCAL(oparg) == v)
+            if (GETLOCAL(oparg) == PyValue_FromObject(v))
                 SETLOCAL(oparg, (PyObject *)NULL);
             break;
         }
