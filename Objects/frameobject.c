@@ -931,14 +931,7 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Size(map) >= nmap);
     for (j=0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
-        PyObject *box = NULL;
-        if (values[j] != PyValue_NULL) {
-            box = PyValue_Box(values[j]);
-            if (!box) {
-                return -1;
-            }
-        }
-        PyObject *value = box;
+        PyObject *value = PyValue_AsObject(values[j]);
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
             assert(PyCell_Check(value));
@@ -950,18 +943,15 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
                     PyErr_Clear();
                 }
                 else {
-                    Py_XDECREF(box);
                     return -1;
                 }
             }
         }
         else {
             if (PyObject_SetItem(dict, key, value) != 0) {
-                Py_XDECREF(box);
                 return -1;
             }
         }
-        Py_XDECREF(box);
     }
     return 0;
 }
@@ -1005,7 +995,7 @@ dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
             if (!clear)
                 continue;
         }
-        PyObject *vj = PyValue_Box(values[j]);
+        PyObject *vj = PyValue_AsObject(values[j]);
         if (deref) {
             assert(PyCell_Check(vj));
             if (PyCell_GET(vj) != value) {
@@ -1206,6 +1196,7 @@ _PyEval_BuiltinsFromGlobals(PyThreadState *tstate, PyObject *globals)
     return _PyEval_GetBuiltins(tstate);
 }
 
+#if 0
 // Boxing and unboxing
 // TODO: Move to its own file
 
@@ -1242,3 +1233,4 @@ PyValue_Unbox(PyObject *o)
     Py_XINCREF(o);
     return PyValue_FromObject(o);
 }
+#endif
