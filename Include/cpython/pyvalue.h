@@ -53,7 +53,7 @@ Tag |  Meaning                  | Encoding
 #endif /* Py_DEBUG */
 
 // Encoding macros
-#define PyValue_FromInt(x) (((PyValue)((x) << 3) | PyValue_TagInt)
+#define PyValue_FromInt(x) ((PyValue)((x) << 3) | PyValue_TagInt)
 #define PyValue_FromObject(x) (((PyValue)(x)) | PyValue_TagObject)
 
 #else
@@ -64,10 +64,28 @@ Tag |  Meaning                  | Encoding
 #define PyValue_Error (PyValue_FromObject((PyObject *)NULL))
 #define PyValue_NULL (PyValue_FromObject((PyObject *)NULL))
 
-// Boxing and unboxing API
-// - These return new references
-// - On error they return NULL
-// - If the original value was already NULL they set an error
+/* Boxing and unboxing API
+
+   These operations are somewhat asymmetric.
+
+   - Unboxing may convert int objects with in-range values to tagged values.
+     This cannot fail, since no memory is allocated, and it is always okay
+     to return the original object. It does not bump the refcount.
+     Usage is meant to be in the context of moving ownership of a value
+     from one variable to another (e.g. popping the stack into a variable).
+     NULL is passed through.
+
+   - Boxing converts tagged ints back to objects, and returns the original
+     object in other cases (again, passing NULL through). It does not bump
+     the reference count when passing through an object. However, when it
+     has to convert a tagged integer to an int object, the recipient becomes
+     the owner of the newly created int object. Since creating a new int
+     object may require allocating new memory, this operation may fail,
+     and in that case NULL is returned. The caller will have to use
+     PyErr_Occurred() to distinguish a pass-through NULL from an error,
+     unless the caller has already checked that the argument is not NULL.
+*/
+
 PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
 PyObject *PyValue_Box(PyValue);  // Boxes non-pointer values
 

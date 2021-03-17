@@ -1196,41 +1196,50 @@ _PyEval_BuiltinsFromGlobals(PyThreadState *tstate, PyObject *globals)
     return _PyEval_GetBuiltins(tstate);
 }
 
-#if 0
 // Boxing and unboxing
 // TODO: Move to its own file
 
+// May error; transfers ownership (doesn't incref)
 PyObject *
 PyValue_Box(PyValue v)
 {
+    if (v == PyValue_NULL) {
+        return (PyObject *)NULL;  // Not an error
+    }
     if (PyValue_IsObject(v)) {
-        PyObject *o = PyValue_AsObject(v);
-        if (o == NULL) {
-            PyErr_SetString(PyExc_SystemError, "can't box NULL");
-            assert(0);
-            return NULL;
-        }
-        Py_INCREF(o);
-        return o;
+        return  PyValue_AsObject(v);  // Can't error
     }
     if (PyValue_IsInt(v)) {
         long long i = PyValue_AsInt(v);
-        return PyLong_FromLongLong(i);
+        return PyLong_FromLongLong(i);  // May error
     }
     if (PyValue_IsFloat(v)) {
         double x = PyValue_AsFloat(v);
-        return PyFloat_FromDouble(x);
+        return PyFloat_FromDouble(x);  // May error
     }
-    PyErr_Format(PyExc_SystemError, "can't box value with tag 0o%o", PyValue_Tag(v));
-    assert(0);
+    // Should never get here -- input must be corrupt
+    Py_FatalError("Invalid tag in value");
     return NULL;
 }
 
+// Cannot error; transfers ownership (doesn't incref)
 PyValue
 PyValue_Unbox(PyObject *o)
 {
-    // TODO: ints, floats
-    Py_XINCREF(o);
+    if (PyLong_CheckExact(o)) {
+        PyLongObject *l = (PyLongObject *)o;
+        Py_ssize_t size = ((PyVarObject *)l)->ob_size;
+        if (size == 0) {
+            return PyValue_FromInt(0);
+        }
+        if (size == 1) {
+            return PyValue_FromInt(l->ob_digit[0]);
+        }
+        if (size == -1) {
+            return PyValue_FromInt(-(l->ob_digit[0]));
+        }
+        // TODO: some values with two "digits" may fit
+    }
+    // TODO: float
     return PyValue_FromObject(o);
 }
-#endif
