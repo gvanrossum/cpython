@@ -1432,7 +1432,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
                             assert(STACK_LEVEL() <= co->co_stacksize); \
                         } while (0)
 #define EXT_POP(STACK_POINTER) ((void)(lltrace && \
-                                prtrace(tstate, (STACK_POINTER)[-1], "ext_pop")), \
+                                prtrace(tstate, PyValue_AsObject((STACK_POINTER)[-1]), "ext_pop")), \
                                 *--(STACK_POINTER))
 #else
 #define PUSH(v)                BASIC_PUSH(v)

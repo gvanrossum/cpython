@@ -45,7 +45,7 @@ Tag |  Meaning                  | Encoding
 #ifdef Py_DEBUG
 #define PyValue_AsInt(x) (PyValue_IsInt(x) ? (x) >> 3 : (abort(), 0))
 #define PyValue_AsFloat(x) (0.0)  // XXX TODO
-#define PyValue_AsObject(x) (PyValue_IsObject(x) ? ((PyObject *)(x)) : (abort(), (PyObject *)NULL))
+#define PyValue_AsObject(x) ((PyObject *)(x))
 #else /* Py_DEBUG */
 #define PyValue_AsInt(x) ((x) >> 3)
 #define PyValue_AsFloat(x) (0.0)  // XXX TODO
