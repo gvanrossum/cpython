@@ -931,11 +931,17 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Size(map) >= nmap);
     for (j=0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
-        PyObject *value = PyValue_AsObject(values[j]);
+        PyValue vj = values[j];
+        PyValue_XINCREF(vj);
+        PyObject *value = PyValue_Box(vj);
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
-            assert(PyCell_Check(value));
-            value = PyCell_GET(value);
+            PyObject *cell = value;
+            assert(PyCell_Check(cell));
+            value = PyCell_GET(cell);
+            // Transfer reference from cell to value
+            Py_XINCREF(value);
+            Py_DECREF(cell);
         }
         if (value == NULL) {
             if (PyObject_DelItem(dict, key) != 0) {
@@ -948,7 +954,9 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
             }
         }
         else {
-            if (PyObject_SetItem(dict, key, value) != 0) {
+            int res = PyObject_SetItem(dict, key, value);
+            Py_DECREF(value);
+            if (res != 0) {
                 return -1;
             }
         }
@@ -1199,7 +1207,7 @@ _PyEval_BuiltinsFromGlobals(PyThreadState *tstate, PyObject *globals)
 // Boxing and unboxing
 // TODO: Move to its own file
 
-// May error; transfers ownership (doesn't incref)
+// May error fatally; transfers ownership (doesn't incref)
 PyObject *
 PyValue_Box(PyValue v)
 {
@@ -1211,11 +1219,19 @@ PyValue_Box(PyValue v)
     }
     if (PyValue_IsInt(v)) {
         long long i = PyValue_AsInt(v);
-        return PyLong_FromLongLong(i);  // May error
+        PyObject *o = PyLong_FromLongLong(i);  // May error
+        if (!o) {
+            Py_FatalError("Allocation failed in PyValue_Box()");
+        }
+        return o;
     }
     if (PyValue_IsFloat(v)) {
         double x = PyValue_AsFloat(v);
-        return PyFloat_FromDouble(x);  // May error
+        PyObject *o = PyFloat_FromDouble(x);  // May error
+        if (!o) {
+            Py_FatalError("Allocation failed in PyValue_Box()");
+        }
+        return o;
     }
     // Should never get here -- input must be corrupt
     Py_FatalError("Invalid tag in value");
@@ -1228,7 +1244,7 @@ PyValue_Unbox(PyObject *o)
 {
     if (PyLong_CheckExact(o)) {
         PyLongObject *l = (PyLongObject *)o;
-        Py_ssize_t size = ((PyVarObject *)l)->ob_size;
+        Py_ssize_t size = l->ob_base.ob_size;
         if (size == 0) {
             return PyValue_FromInt(0);
         }
@@ -1236,7 +1252,7 @@ PyValue_Unbox(PyObject *o)
             return PyValue_FromInt(l->ob_digit[0]);
         }
         if (size == -1) {
-            return PyValue_FromInt(-(l->ob_digit[0]));
+            return PyValue_FromInt(-(Py_ssize_t)(l->ob_digit[0]));
         }
         // TODO: some values with two "digits" may fit
     }

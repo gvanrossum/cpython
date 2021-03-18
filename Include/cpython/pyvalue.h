@@ -80,10 +80,16 @@ Tag |  Meaning                  | Encoding
      the reference count when passing through an object. However, when it
      has to convert a tagged integer to an int object, the recipient becomes
      the owner of the newly created int object. Since creating a new int
-     object may require allocating new memory, this operation may fail,
-     and in that case NULL is returned. The caller will have to use
-     PyErr_Occurred() to distinguish a pass-through NULL from an error,
-     unless the caller has already checked that the argument is not NULL.
+     object may require allocating new memory, this operation may fail.
+     Since it would be a pain to check for such failures in the caller,
+     and running out of memory is not really a recoverable condition,
+     for now the function just calls Py_FatalError().
+
+     **NOTE:** Boxing cannot fail, but it still creates an object, and the
+     caller must take ownership of that object and eventually DECREF it.
+     A possible pattern is `v = (PyValue)PyValue_Box(v);` where `v` is a
+     variable that is already owned. Then `PyValue_AsObject(v)` is
+     guaranteed to be an object.
 */
 
 PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
