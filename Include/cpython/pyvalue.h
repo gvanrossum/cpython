@@ -87,13 +87,12 @@ Tag |  Meaning                  | Encoding
 
      **NOTE:** Boxing cannot fail, but it still creates an object, and the
      caller must take ownership of that object and eventually DECREF it.
-     A possible pattern is `v = (PyValue)PyValue_Box(v);` where `v` is a
-     variable that is already owned. Then `PyValue_AsObject(v)` is
-     guaranteed to be an object.
+     A more convenient helper function is PyValue_BoxOrIncref().
 */
 
 PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
 PyObject *PyValue_Box(PyValue);  // Boxes non-pointer values
+PyObject *PyValue_BoxOrIncref(PyValue);  // Ditto, conferring ownership
 
 #define PyValue_CLEAR(v)               \
     do {                               \

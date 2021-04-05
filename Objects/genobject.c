@@ -361,8 +361,7 @@ _PyGen_yf(PyGenObject *gen)
         if (code[(f->f_lasti+1)*sizeof(_Py_CODEUNIT)] != YIELD_FROM)
             return NULL;
         assert(f->f_stackdepth > 0);
-        yf = PyValue_AsObject(f->f_valuestack[f->f_stackdepth-1]);
-        Py_XINCREF(yf);
+        yf = PyValue_BoxOrIncref(f->f_valuestack[f->f_stackdepth-1]);
     }
 
     return yf;

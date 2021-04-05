@@ -910,11 +910,14 @@ PyFrame_BlockPop(PyFrameObject *f)
 
 /* Convert between "fast" version of locals and dictionary version.
 
+   for i in range(nmap):
+       dict[map[i]] = values[i]
+
    map and values are input arguments.  map is a tuple of strings.
-   values is an array of PyObject*.  At index i, map[i] is the name of
-   the variable with value values[i].  The function copies the first
-   nmap variable from map/values into dict.  If values[i] is NULL,
-   the variable is deleted from dict.
+   values is an array of PyValue.  For i < nmap, map[i] is the name of
+   the variable with value values[i].  The function copies nmap
+   variables from map/values into dict.  If values[i] is NULL,
+   the variable is deleted from dict (if present).
 
    If deref is true, then the values being copied are cell variables
    and the value is extracted from the cell variable before being put
@@ -929,18 +932,15 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Check(map));
     assert(PyDict_Check(dict));
     assert(PyTuple_Size(map) >= nmap);
-    for (j=0; j < nmap; j++) {
+    for (j = 0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
         PyValue vj = values[j];
-        PyValue_XINCREF(vj);
-        PyObject *value = PyValue_Box(vj);
+        PyObject *value = PyValue_BoxOrIncref(vj);
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
             PyObject *cell = value;
             assert(PyCell_Check(cell));
-            value = PyCell_GET(cell);
-            // Transfer reference from cell to value
-            Py_XINCREF(value);
+            value = PyCell_Get(cell);
             Py_DECREF(cell);
         }
         if (value == NULL) {
@@ -966,22 +966,25 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
 
 /* Copy values from the "locals" dict into the fast locals.
 
+   for i in range(nmap):
+       values[i] = dict[map[i]]
+
    dict is an input argument containing string keys representing
    variables names and arbitrary PyObject* as values.
 
-   map and values are input arguments.  map is a tuple of strings.
-   values is an array of PyObject*.  At index i, map[i] is the name of
-   the variable with value values[i].  The function copies the first
-   nmap variable from map/values into dict.  If values[i] is NULL,
-   the variable is deleted from dict.
+   map and values represent the output.  map is a tuple of strings.
+   values is an array of PyValue.  For i < nmap, map[i] is the name of
+   the variable with value values[i].  The function copies nmap
+   variables from dict into values.
 
-   If deref is true, then the values being copied are cell variables
-   and the value is extracted from the cell variable before being put
-   in dict.  If clear is true, then variables in map but not in dict
-   are set to NULL in map; if clear is false, variables missing in
+   If deref is true, then the destinations are cell variables
+   and the value is stored into the cell variable.
+
+   If clear is true, then variables in map but not in dict
+   are set to NULL in values; if clear is false, variables missing in
    dict are ignored.
 
-   Exceptions raised while modifying the dict are silently ignored,
+   Exceptions raised while accessing the dict are silently ignored,
    because there is no good way to report them.
 */
 
@@ -993,7 +996,7 @@ dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Check(map));
     assert(PyDict_Check(dict));
     assert(PyTuple_Size(map) >= nmap);
-    for (j=0; j < nmap; j++) {
+    for (j = 0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
         PyObject *value = PyObject_GetItem(dict, key);
         assert(PyUnicode_Check(key));
@@ -1003,16 +1006,19 @@ dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
             if (!clear)
                 continue;
         }
-        PyObject *vj = PyValue_AsObject(values[j]);
+        PyValue vj = values[j];
         if (deref) {
-            assert(PyCell_Check(vj));
-            if (PyCell_GET(vj) != value) {
-                if (PyCell_Set(vj, value) < 0)
+            assert(PyValue_IsObject(vj));
+            PyObject *cell = PyValue_AsObject(vj);
+            assert(PyCell_Check(cell));
+            if (PyCell_GET(cell) != value) {
+                if (PyCell_Set(cell, value) < 0)
                     PyErr_Clear();
             }
-        } else if (vj != value) {
+        } else if (!PyValue_IsObject(vj) || PyValue_AsObject(vj) != value) {
             Py_XINCREF(value);
-            Py_XSETREF(vj, value);
+            values[j] = PyValue_FromObject(value);  // No need to unbox
+            PyValue_XDECREF(vj);
         }
         Py_XDECREF(value);
     }
@@ -1236,6 +1242,15 @@ PyValue_Box(PyValue v)
     // Should never get here -- input must be corrupt
     Py_FatalError("Invalid tag in value");
     return NULL;
+}
+
+// Like PyValue_Box() conferring ownership
+PyObject *
+PyValue_BoxOrIncref(PyValue v)
+{
+    // TODO: Optimize
+    PyValue_XINCREF(v);
+    return PyValue_Box(v);
 }
 
 // Cannot error; transfers ownership (doesn't incref)
