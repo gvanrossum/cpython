@@ -1400,20 +1400,25 @@ eval_frame_handle_pending(PyThreadState *tstate)
    co_stacksize are ints. */
 #define STACK_LEVEL()     ((int)(stack_pointer - f->f_valuestack))
 #define EMPTY()           (STACK_LEVEL() == 0)
-#define TOP()             PyValue_AsObject(stack_pointer[-1])
-#define SECOND()          PyValue_AsObject(stack_pointer[-2])
-#define THIRD()           PyValue_AsObject(stack_pointer[-3])
-#define FOURTH()          PyValue_AsObject(stack_pointer[-4])
-#define PEEK(n)           PyValue_AsObject(stack_pointer[-(n)])
+#define TOP()             PyValue_BoxInPlace(&stack_pointer[-1])
+#define SECOND()          PyValue_BoxInPlace(&stack_pointer[-2])
+#define THIRD()           PyValue_BoxInPlace(&stack_pointer[-3])
+#define FOURTH()          PyValue_BoxInPlace(&stack_pointer[-4])
+#define PEEK(n)           PyValue_BoxInPlace(&stack_pointer[-(n)])
 #define SET_TOP(v)        (stack_pointer[-1] = PyValue_FromObject(v))
 #define SET_SECOND(v)     (stack_pointer[-2] = PyValue_FromObject(v))
 #define SET_THIRD(v)      (stack_pointer[-3] = PyValue_FromObject(v))
 #define SET_FOURTH(v)     (stack_pointer[-4] = PyValue_FromObject(v))
 #define BASIC_STACKADJ(n) (stack_pointer += n)
 #define BASIC_PUSH(v)     (*stack_pointer++ = PyValue_FromObject(v))
-#define BASIC_POP()       PyValue_AsObject(*--stack_pointer)
+#define BASIC_POP()       PyValue_BoxInPlace(&*--stack_pointer)
+
+// TODO: PyValue versions of some or all of the above?
 
 #ifdef LLTRACE
+#define PUSH_VALUE(v)   { *stack_pointer++ = (v); \
+                          lltrace && prtrace(tstate, TOP(), "push")); \
+                          assert(STACK_LEVEL() <= co->co_stacksize); }
 #define PUSH(v)         { (void)(BASIC_PUSH(v), \
                           lltrace && prtrace(tstate, TOP(), "push")); \
                           assert(STACK_LEVEL() <= co->co_stacksize); }
@@ -1432,14 +1437,15 @@ eval_frame_handle_pending(PyThreadState *tstate)
                             assert(STACK_LEVEL() <= co->co_stacksize); \
                         } while (0)
 #define EXT_POP(STACK_POINTER) ((void)(lltrace && \
-                                prtrace(tstate, PyValue_AsObject((STACK_POINTER)[-1]), "ext_pop")), \
-                                *--(STACK_POINTER))
+                                prtrace(tstate, PyValue_BoxInPlace(&(STACK_POINTER)[-1]), "ext_pop")), \
+                                PyValue_BoxInPlace(&*--(STACK_POINTER)))
 #else
+#define PUSH_VALUE(v)          (*stack_pointer++ = (v))
 #define PUSH(v)                BASIC_PUSH(v)
 #define POP()                  BASIC_POP()
 #define STACK_GROW(n)          BASIC_STACKADJ(n)
 #define STACK_SHRINK(n)        BASIC_STACKADJ(-n)
-#define EXT_POP(STACK_POINTER) (*--(STACK_POINTER))
+#define EXT_POP(STACK_POINTER) (PyValue_BoxInPlace(&*--(STACK_POINTER)))
 #endif
 
 /* Local variable macros */
@@ -3048,7 +3054,7 @@ main_loop:
         }
 
         case TARGET(DELETE_DEREF): {
-            PyObject *cell = PyValue_AsObject(freevars[oparg]);
+            PyObject *cell = PyValue_BoxInPlace(&freevars[oparg]);
             PyObject *oldobj = PyCell_GET(cell);
             if (oldobj != NULL) {
                 PyCell_SET(cell, NULL);
@@ -3060,7 +3066,7 @@ main_loop:
         }
 
         case TARGET(LOAD_CLOSURE): {
-            PyObject *cell = PyValue_AsObject(freevars[oparg]);
+            PyObject *cell = PyValue_BoxInPlace(&freevars[oparg]);
             Py_INCREF(cell);
             PUSH(cell);
             DISPATCH();
@@ -3093,7 +3099,7 @@ main_loop:
                 }
             }
             if (!value) {
-                PyObject *cell = PyValue_AsObject(freevars[oparg]);
+                PyObject *cell = PyValue_BoxInPlace(&freevars[oparg]);
                 value = PyCell_GET(cell);
                 if (value == NULL) {
                     format_exc_unbound(tstate, co, oparg);
@@ -3106,7 +3112,7 @@ main_loop:
         }
 
         case TARGET(LOAD_DEREF): {
-            PyObject *cell = PyValue_AsObject(freevars[oparg]);
+            PyObject *cell = PyValue_BoxInPlace(&freevars[oparg]);
             PyObject *value = PyCell_GET(cell);
             if (value == NULL) {
                 format_exc_unbound(tstate, co, oparg);
@@ -3119,7 +3125,7 @@ main_loop:
 
         case TARGET(STORE_DEREF): {
             PyObject *v = POP();
-            PyObject *cell = PyValue_AsObject(freevars[oparg]);
+            PyObject *cell = PyValue_BoxInPlace(&freevars[oparg]);
             PyObject *oldobj = PyCell_GET(cell);
             PyCell_SET(cell, v);
             Py_XDECREF(oldobj);
@@ -4201,8 +4207,8 @@ main_loop:
 
         case TARGET(CALL_METHOD): {
             /* Designed to work in tamdem with LOAD_METHOD. */
-            PyValue *sp;
-            PyObject *res, *meth;
+            PyValue *sp, res;
+            PyObject *meth;
 
             sp = stack_pointer;
 
@@ -4222,7 +4228,7 @@ main_loop:
                    `callable` will be POPed by call_function.
                    NULL will will be POPed manually later.
                 */
-                res = PyValue_AsObject(call_function(tstate, &trace_info, &sp, oparg, NULL));
+                res = call_function(tstate, &trace_info, &sp, oparg, NULL);
                 stack_pointer = sp;
                 (void)POP(); /* POP the NULL. */
             }
@@ -4239,12 +4245,12 @@ main_loop:
                   We'll be passing `oparg + 1` to call_function, to
                   make it accept the `self` as a first argument.
                 */
-                res = PyValue_AsObject(call_function(tstate, &trace_info, &sp, oparg + 1, NULL));
+                res = call_function(tstate, &trace_info, &sp, oparg + 1, NULL);
                 stack_pointer = sp;
             }
 
-            PUSH(res);
-            if (res == NULL)
+            PUSH_VALUE(res);
+            if (res == PyValue_NULL)
                 goto error;
             CHECK_EVAL_BREAKER();
             DISPATCH();
@@ -5015,7 +5021,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         /* Possibly account for the cell variable being an argument. */
         if (co->co_cell2arg != NULL &&
             (arg = co->co_cell2arg[i]) != CO_CELL_NOT_AN_ARG) {
-            c = PyCell_New(PyValue_AsObject(GETLOCAL(arg)));
+            c = PyCell_New(PyValue_BoxInPlace(&GETLOCAL(arg)));
             /* Clear the local copy. */
             SETLOCAL(arg, (PyObject *)NULL);
         }
@@ -5907,7 +5913,7 @@ call_function(PyThreadState *tstate,
               PyObject *kwnames)
 {
     PyValue *pfunc = (*pp_stack) - oparg - 1;
-    PyObject *func = PyValue_AsObject(*pfunc);
+    PyObject *func = PyValue_BoxInPlace(&*pfunc);
     PyObject *x, *w;
     Py_ssize_t nkwargs = (kwnames == NULL) ? 0 : PyTuple_GET_SIZE(kwnames);
     Py_ssize_t nargs = oparg - nkwargs;
@@ -5925,7 +5931,7 @@ call_function(PyThreadState *tstate,
 
     /* Clear the stack of the function object. */
     while ((*pp_stack) > pfunc) {
-        w = PyValue_AsObject(EXT_POP(*pp_stack));
+        w = EXT_POP(*pp_stack);
         Py_DECREF(w);
     }
 
@@ -6376,7 +6382,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
         {
             PyValue *freevars = (f->f_localsplus +
                                    f->f_code->co_nlocals);
-            PyObject *c = PyValue_AsObject(freevars[oparg]);
+            PyObject *c = PyValue_BoxInPlace(&freevars[oparg]);
             if (PyCell_GET(c) == v) {
                 PyCell_SET(c, NULL);
                 Py_DECREF(v);
