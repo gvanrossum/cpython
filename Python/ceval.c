@@ -1417,7 +1417,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
 
 #ifdef LLTRACE
 #define PUSH_VALUE(v)   { *stack_pointer++ = (v); \
-                          lltrace && prtrace(tstate, TOP(), "push")); \
+                          lltrace && prtrace(tstate, TOP(), "push"); \
                           assert(STACK_LEVEL() <= co->co_stacksize); }
 #define PUSH(v)         { (void)(BASIC_PUSH(v), \
                           lltrace && prtrace(tstate, TOP(), "push")); \
