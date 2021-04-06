@@ -934,14 +934,12 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
     assert(PyTuple_Size(map) >= nmap);
     for (j = 0; j < nmap; j++) {
         PyObject *key = PyTuple_GET_ITEM(map, j);
-        PyValue vj = values[j];
-        PyObject *value = PyValue_BoxOrIncref(vj);
+        PyObject *value = PyValue_BoxInPlace(&values[j]);
         assert(PyUnicode_Check(key));
         if (deref && value != NULL) {
             PyObject *cell = value;
             assert(PyCell_Check(cell));
-            value = PyCell_Get(cell);
-            Py_DECREF(cell);
+            value = PyCell_GET(cell);
         }
         if (value == NULL) {
             if (PyObject_DelItem(dict, key) != 0) {
@@ -955,7 +953,6 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
         }
         else {
             int res = PyObject_SetItem(dict, key, value);
-            Py_DECREF(value);
             if (res != 0) {
                 return -1;
             }
@@ -1227,7 +1224,7 @@ PyValue_Box(PyValue v)
         long long i = PyValue_AsInt(v);
         PyObject *o = PyLong_FromLongLong(i);  // May error
         if (!o) {
-            Py_FatalError("Allocation failed in PyValue_Box()");
+            Py_FatalError("Int allocation failed in PyValue_Box()");
         }
         return o;
     }
@@ -1235,22 +1232,45 @@ PyValue_Box(PyValue v)
         double x = PyValue_AsFloat(v);
         PyObject *o = PyFloat_FromDouble(x);  // May error
         if (!o) {
-            Py_FatalError("Allocation failed in PyValue_Box()");
+            Py_FatalError("Int allocation failed in PyValue_Box()");
         }
         return o;
     }
     // Should never get here -- input must be corrupt
-    Py_FatalError("Invalid tag in value");
+    Py_FatalError("Invalid tag in PyValue_Box()");
     return NULL;
 }
 
-// Like PyValue_Box() conferring ownership
+// Like PyValue_Box(), but returns borrowed reference (argument owns it)
 PyObject *
-PyValue_BoxOrIncref(PyValue v)
+PyValue_BoxInPlace(PyValue *pv)
 {
-    // TODO: Optimize
-    PyValue_XINCREF(v);
-    return PyValue_Box(v);
+    PyValue v = *pv;
+    if (PyValue_IsObject(v)) {
+        return PyValue_AsObject(v);  // Can't error
+    }
+    if (PyValue_IsInt(v)) {
+        long long i = PyValue_AsInt(v);
+        PyObject *o = PyLong_FromLongLong(i);  // May error
+        if (!o) {
+            Py_FatalError("Int allocation failed in PyValue_BoxInPlace()");
+        }
+        *pv = PyValue_FromObject(o);
+        return o;
+    }
+    if (PyValue_IsFloat(v)) {
+        double x = PyValue_AsFloat(v);
+        PyObject *o = PyFloat_FromDouble(x);  // May error
+        if (!o) {
+            Py_FatalError("Float allocation failed in PyValue_BoxInPlace()");
+        }
+        *pv = PyValue_FromObject(o);
+        return o;
+    }
+    // Should never get here -- input must be corrupt
+    Py_FatalError("Invalid tag in PyValue_BoxInPlace()");
+    return NULL;
+
 }
 
 // Cannot error; transfers ownership (doesn't incref)

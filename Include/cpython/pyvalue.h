@@ -87,12 +87,12 @@ Tag |  Meaning                  | Encoding
 
      **NOTE:** Boxing cannot fail, but it still creates an object, and the
      caller must take ownership of that object and eventually DECREF it.
-     A more convenient helper function is PyValue_BoxOrIncref().
+     A more convenient helper function is PyValue_BoxInPlace().
 */
 
 PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
 PyObject *PyValue_Box(PyValue);  // Boxes non-pointer values
-PyObject *PyValue_BoxOrIncref(PyValue);  // Ditto, conferring ownership
+PyObject *PyValue_BoxInPlace(PyValue *);  // Boxes in-place
 
 #define PyValue_CLEAR(v)               \
     do {                               \

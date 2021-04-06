@@ -8201,7 +8201,7 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
         return -1;
     }
 
-    PyObject *obj = PyValue_BoxOrIncref(f->f_localsplus[0]);  // We now own it
+    PyObject *obj = PyValue_BoxInPlace(&f->f_localsplus[0]);
     Py_ssize_t i, n;
     if (obj == NULL && co->co_cell2arg) {
         /* The first argument might be a cell. */
@@ -8210,7 +8210,7 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
             if (co->co_cell2arg[i] == 0) {
                 PyObject *cell = PyValue_AsObject(f->f_localsplus[co->co_nlocals + i]);
                 assert(PyCell_Check(cell));
-                obj = PyCell_Get(cell);
+                obj = PyCell_GET(cell);
                 break;
             }
         }
@@ -8220,8 +8220,6 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
                         "super(): arg[0] deleted");
         return -1;
     }
-    // Pass ownership to caller, even upon failure
-    *obj_p = obj;
 
     if (co->co_freevars == NULL) {
         n = 0;
@@ -8266,6 +8264,7 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
     }
 
     *type_p = type;
+    *obj_p = obj;
     return 0;
 }
 
@@ -8295,12 +8294,10 @@ super_init(PyObject *self, PyObject *args, PyObject *kwds)
 
         PyCodeObject *code = PyFrame_GetCode(frame);
         int res = super_init_without_args(frame, code, &type, &obj);
-        // We now own a reference to obj
         Py_DECREF(frame);
         Py_DECREF(code);
 
         if (res < 0) {
-            Py_XDECREF(obj);
             return -1;
         }
     }
