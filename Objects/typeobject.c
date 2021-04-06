@@ -8208,6 +8208,7 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
         n = PyTuple_GET_SIZE(co->co_cellvars);
         for (i = 0; i < n; i++) {
             if (co->co_cell2arg[i] == 0) {
+                assert(PyValue_IsObject(f->f_localsplus[co->co_nlocals + i]));
                 PyObject *cell = PyValue_AsObject(f->f_localsplus[co->co_nlocals + i]);
                 assert(PyCell_Check(cell));
                 obj = PyCell_GET(cell);
@@ -8236,6 +8237,7 @@ super_init_without_args(PyFrameObject *f, PyCodeObject *co,
         if (_PyUnicode_EqualToASCIIId(name, &PyId___class__)) {
             Py_ssize_t index = co->co_nlocals +
                 PyTuple_GET_SIZE(co->co_cellvars) + i;
+            assert(PyValue_IsObject(f->f_localsplus[index]));
             PyObject *cell = PyValue_AsObject(f->f_localsplus[index]);
             if (cell == NULL || !PyCell_Check(cell)) {
                 PyErr_SetString(PyExc_RuntimeError,

@@ -1008,7 +1008,7 @@ dict_to_map(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
                 if (PyCell_Set(cell, value) < 0)
                     PyErr_Clear();
             }
-        } else if (!PyValue_IsObject(vj) || PyValue_AsObject(vj) != value) {
+        } else if (!(PyValue_IsObject(vj) && PyValue_AsObject(vj) == value)) {
             Py_XINCREF(value);
             values[j] = PyValue_FromObject(value);  // No need to unbox
             PyValue_XDECREF(vj);
