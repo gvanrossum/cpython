@@ -943,19 +943,15 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyValue *values,
         }
         if (value == NULL) {
             if (PyObject_DelItem(dict, key) != 0) {
-                if (PyErr_ExceptionMatches(PyExc_KeyError)) {
+                if (PyErr_ExceptionMatches(PyExc_KeyError))
                     PyErr_Clear();
-                }
-                else {
+                else
                     return -1;
-                }
             }
         }
         else {
-            int res = PyObject_SetItem(dict, key, value);
-            if (res != 0) {
+            if (PyObject_SetItem(dict, key, value) != 0)
                 return -1;
-            }
         }
     }
     return 0;
