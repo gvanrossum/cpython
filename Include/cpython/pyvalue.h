@@ -36,6 +36,11 @@ Tag |  Meaning                  | Encoding
 #define PyValue_TagInt 1
 #define PyValue_TagObject 0
 
+// Range of taggable ints (inclusive range)
+#define PyValue_MinInt ((1LL << 60) - (1LL << 61))
+#define PyValue_MaxInt ((1LL << 60) - 1)
+#define PyValue_InIntRange(v) (PyValue_MinInt <= (v) && (v) <= PyValue_MaxInt)
+
 // Macros to check what we have
 #define PyValue_IsInt(x) (PyValue_Tag(x) == PyValue_TagInt)
 #define PyValue_IsFloat(x) 0  // XXX TODO

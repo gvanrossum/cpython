@@ -4047,6 +4047,17 @@ main_loop:
             PREDICTED(FOR_ITER);
             /* before: [iter]; after: [iter, iter()] *or* [] */
             PyObject *iter = TOP();
+            #if 1
+            if (Py_TYPE(iter) == &PyRangeIter_Type) {
+                PyValue nextv = _PyRangeIter_NextValue(iter);
+                if (nextv == PyValue_NULL) {
+                    goto for_iter_error;
+                }
+                PUSH_VALUE(nextv);
+                PREDICT(STORE_FAST);
+                DISPATCH();
+            }
+            #endif
             PyObject *next = (*Py_TYPE(iter)->tp_iternext)(iter);
             if (next != NULL) {
                 PUSH(next);
@@ -4054,6 +4065,7 @@ main_loop:
                 PREDICT(UNPACK_SEQUENCE);
                 DISPATCH();
             }
+        for_iter_error:
             if (_PyErr_Occurred(tstate)) {
                 if (!_PyErr_ExceptionMatches(tstate, PyExc_StopIteration)) {
                     goto error;

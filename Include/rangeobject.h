@@ -21,6 +21,9 @@ PyAPI_DATA(PyTypeObject) PyLongRangeIter_Type;
 
 #define PyRange_Check(op) Py_IS_TYPE(op, &PyRange_Type)
 
+// Internal API for FOR_ITER opcode only (TODO: move to internal header)
+PyAPI_FUNC(PyValue) _PyRangeIter_NextValue(PyObject *v);
+
 #ifdef __cplusplus
 }
 #endif

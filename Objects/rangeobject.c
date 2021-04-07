@@ -772,6 +772,26 @@ typedef struct {
         long    len;
 } rangeiterobject;
 
+// Internal API for FOR_ITER opcode only
+PyValue
+_PyRangeIter_NextValue(PyObject *o)
+{
+    assert(Py_TYPE(o) == &PyRangeIter_Type);
+    rangeiterobject *r = (rangeiterobject *)o;
+    if (r->index < r->len) {
+        // See comment in rangeiter_next() below
+        long next = (long)(r->start + (unsigned long)(r->index++) * r->step);
+        if (PyValue_InIntRange(next)) {
+            return PyValue_FromInt(next);  // Return a tagged int
+        }
+        else {
+            // Doesn't fit in a tagged value
+            return PyValue_FromObject(PyLong_FromLong(next));
+        }
+    }
+    return PyValue_NULL;
+}
+
 static PyObject *
 rangeiter_next(rangeiterobject *r)
 {
