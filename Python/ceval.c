@@ -1419,6 +1419,8 @@ eval_frame_handle_pending(PyThreadState *tstate)
 #define PUSH_VALUE(v)   { *stack_pointer++ = (v); \
                           lltrace && prtrace(tstate, TOP(), "push"); \
                           assert(STACK_LEVEL() <= co->co_stacksize); }
+#define POP_VALUE()     ((void)(lltrace && prtrace(tstate, TOP(), "pop")), \
+                         (*--stack_pointer))
 #define PUSH(v)         { (void)(BASIC_PUSH(v), \
                           lltrace && prtrace(tstate, TOP(), "push")); \
                           assert(STACK_LEVEL() <= co->co_stacksize); }
@@ -1441,6 +1443,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
                                 PyValue_BoxInPlace(&*--(STACK_POINTER)))
 #else
 #define PUSH_VALUE(v)          (*stack_pointer++ = (v))
+#define POP_VALUE()            (*--stack_pointer)
 #define PUSH(v)                BASIC_PUSH(v)
 #define POP()                  BASIC_POP()
 #define STACK_GROW(n)          BASIC_STACKADJ(n)
@@ -1461,6 +1464,10 @@ eval_frame_handle_pending(PyThreadState *tstate)
 #define SETLOCAL(i, value)      do { PyValue tmp = GETLOCAL(i); \
                                      GETLOCAL(i) = PyValue_FromObject(value); \
                                      PyValue_XDECREF(tmp); } while (0)
+
+#define SETLOCAL_VALUE(i, value) do { PyValue tmp = GETLOCAL(i); \
+                                      GETLOCAL(i) = (value); \
+                                      PyValue_XDECREF(tmp); } while (0)
 
 
 #define UNWIND_BLOCK(b) \
@@ -1870,7 +1877,7 @@ main_loop:
                 goto error;
             }
             PyValue_INCREF(value);
-            PUSH(value);
+            PUSH_VALUE(value);
             DISPATCH();
         }
 
@@ -1884,8 +1891,8 @@ main_loop:
 
         case TARGET(STORE_FAST): {
             PREDICTED(STORE_FAST);
-            PyObject *value = POP();
-            SETLOCAL(oparg, value);
+            PyValue value = POP_VALUE();
+            SETLOCAL_VALUE(oparg, value);
             DISPATCH();
         }
 
@@ -5925,12 +5932,17 @@ call_function(PyThreadState *tstate,
               PyObject *kwnames)
 {
     PyValue *pfunc = (*pp_stack) - oparg - 1;
-    PyObject *func = PyValue_BoxInPlace(&*pfunc);
+    // Box args and func in-place
+    for (PyValue *p = *pp_stack; --p >= pfunc;) {
+        if (!PyValue_IsObject(*p)) {
+            PyValue_BoxInPlace(&*p);
+        }
+    }
+    PyObject *func = PyValue_AsObject(*pfunc);  // Been converted by above loop
     PyObject *x, *w;
     Py_ssize_t nkwargs = (kwnames == NULL) ? 0 : PyTuple_GET_SIZE(kwnames);
     Py_ssize_t nargs = oparg - nkwargs;
     PyObject **stack = (PyObject **) ((*pp_stack) - nargs - nkwargs);
-    // TODO: Convert stack in-place from PyValue to PyObject* (boxing in-place)
 
     if (tstate->use_tracing) {
         x = trace_call_function(tstate, trace_info, func, stack, nargs, kwnames);
