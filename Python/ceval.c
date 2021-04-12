@@ -1409,11 +1409,21 @@ eval_frame_handle_pending(PyThreadState *tstate)
 #define SET_SECOND(v)     (stack_pointer[-2] = PyValue_FromObject(v))
 #define SET_THIRD(v)      (stack_pointer[-3] = PyValue_FromObject(v))
 #define SET_FOURTH(v)     (stack_pointer[-4] = PyValue_FromObject(v))
+
+// PyValue equivalents
+#define TOP_VALUE()       (stack_pointer[-1])
+#define SECOND_VALUE()    (stack_pointer[-2])
+#define THIRD_VALUE()     (stack_pointer[-3])
+#define FOURTH_VALUE()    (stack_pointer[-4])
+#define PEEK_VALUE(n)     (stack_pointer[-(n)])
+#define SET_TOP_VALUE(v)     (stack_pointer[-1] = (v))
+#define SET_SECOND_VALUE(v)  (stack_pointer[-2] = (v))
+#define SET_THIRD_VALUE(v)   (stack_pointer[-3] = (v))
+#define SET_FOURTH_VALUE(v)  (stack_pointer[-4] = (v))
+
 #define BASIC_STACKADJ(n) (stack_pointer += n)
 #define BASIC_PUSH(v)     (*stack_pointer++ = PyValue_FromObject(v))
 #define BASIC_POP()       PyValue_BoxInPlace(&*--stack_pointer)
-
-// TODO: PyValue versions of some or all of the above?
 
 #ifdef LLTRACE
 #define PUSH_VALUE(v)   { *stack_pointer++ = (v); \
@@ -1688,7 +1698,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         dtrace_function_entry(f);
 
     names = co->co_names;
-    consts = co->co_consts;
+    consts = co->co_consts;  // TODO: Unbox integer constants?
     fastlocals = (PyValue *) (f->f_localsplus);
     freevars = fastlocals + co->co_nlocals;
     assert(PyBytes_Check(co->co_code));
@@ -1897,56 +1907,56 @@ main_loop:
         }
 
         case TARGET(POP_TOP): {
-            PyObject *value = POP();
-            Py_DECREF(value);
+            PyValue value = POP_VALUE();
+            PyValue_DECREF(value);
             DISPATCH();
         }
 
         case TARGET(ROT_TWO): {
-            PyObject *top = TOP();
-            PyObject *second = SECOND();
-            SET_TOP(second);
-            SET_SECOND(top);
+            PyValue top = TOP_VALUE();
+            PyValue second = SECOND_VALUE();
+            SET_TOP_VALUE(second);
+            SET_SECOND_VALUE(top);
             DISPATCH();
         }
 
         case TARGET(ROT_THREE): {
-            PyObject *top = TOP();
-            PyObject *second = SECOND();
-            PyObject *third = THIRD();
-            SET_TOP(second);
-            SET_SECOND(third);
-            SET_THIRD(top);
+            PyValue top = TOP_VALUE();
+            PyValue second = SECOND_VALUE();
+            PyValue third = THIRD_VALUE();
+            SET_TOP_VALUE(second);
+            SET_SECOND_VALUE(third);
+            SET_THIRD_VALUE(top);
             DISPATCH();
         }
 
         case TARGET(ROT_FOUR): {
-            PyObject *top = TOP();
-            PyObject *second = SECOND();
-            PyObject *third = THIRD();
-            PyObject *fourth = FOURTH();
-            SET_TOP(second);
-            SET_SECOND(third);
-            SET_THIRD(fourth);
-            SET_FOURTH(top);
+            PyValue top = TOP_VALUE();
+            PyValue second = SECOND_VALUE();
+            PyValue third = THIRD_VALUE();
+            PyValue fourth = FOURTH_VALUE();
+            SET_TOP_VALUE(second);
+            SET_SECOND_VALUE(third);
+            SET_THIRD_VALUE(fourth);
+            SET_FOURTH_VALUE(top);
             DISPATCH();
         }
 
         case TARGET(DUP_TOP): {
-            PyObject *top = TOP();
-            Py_INCREF(top);
-            PUSH(top);
+            PyValue top = TOP_VALUE();
+            PyValue_INCREF(top);
+            PUSH_VALUE(top);
             DISPATCH();
         }
 
         case TARGET(DUP_TOP_TWO): {
-            PyObject *top = TOP();
-            PyObject *second = SECOND();
-            Py_INCREF(top);
-            Py_INCREF(second);
+            PyValue top = TOP_VALUE();
+            PyValue second = SECOND_VALUE();
+            PyValue_INCREF(top);
+            PyValue_INCREF(second);
             STACK_GROW(2);
-            SET_TOP(top);
-            SET_SECOND(second);
+            SET_TOP_VALUE(top);
+            SET_SECOND_VALUE(second);
             DISPATCH();
         }
 
