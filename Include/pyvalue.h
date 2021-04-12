@@ -10,7 +10,9 @@ extern "C" {
 #elif SIZEOF_VOID_P == 8
 
 // The type to use instead of PyObject *
-typedef int64_t PyValue;  // TODO: Make it a struct for better type checking?
+typedef struct _pyc {
+    uint64_t bits;
+} PyValue;
 
 #else
 #error "This only works for 32- and 64-bit pointers"

@@ -584,7 +584,7 @@ frame_dealloc(PyFrameObject *f)
 
     /* Free stack */
     for (int i = 0; i < f->f_stackdepth; i++) {
-        Py_XDECREF(f->f_valuestack[i]);
+        PyValue_XDECREF(valuestack[i]);
     }
     f->f_stackdepth = 0;
 
@@ -648,7 +648,11 @@ frame_traverse(PyFrameObject *f, visitproc visit, void *arg)
 
     /* stack */
     for (int i = 0; i < f->f_stackdepth; i++) {
-        Py_VISIT(f->f_valuestack[i]);
+        PyValue v = f->f_valuestack[i];
+        if (PyValue_IsObject(v)) {
+            PyObject *o = PyValue_AsObject(v);
+            Py_VISIT(o);
+        }
     }
     return 0;
 }
@@ -1210,7 +1214,7 @@ _PyEval_BuiltinsFromGlobals(PyThreadState *tstate, PyObject *globals)
 PyObject *
 PyValue_Box(PyValue v)
 {
-    if (v == PyValue_NULL) {
+    if (PyValue_IsNULL(v)) {
         return (PyObject *)NULL;  // Not an error
     }
     if (PyValue_IsObject(v)) {

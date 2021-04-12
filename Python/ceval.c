@@ -1870,7 +1870,7 @@ main_loop:
 
         case TARGET(LOAD_FAST): {
             PyValue value = GETLOCAL(oparg);
-            if (value == PyValue_NULL) {
+            if (PyValue_IsNULL(value)) {
                 format_exc_check_arg(tstate, PyExc_UnboundLocalError,
                                      UNBOUNDLOCAL_ERROR_MSG,
                                      PyTuple_GetItem(co->co_varnames, oparg));
@@ -3048,7 +3048,7 @@ main_loop:
 
         case TARGET(DELETE_FAST): {
             PyValue v = GETLOCAL(oparg);
-            if (v != PyValue_NULL) {
+            if (!PyValue_IsNULL(v)) {
                 SETLOCAL(oparg, (PyObject *)NULL);
                 DISPATCH();
             }
@@ -4054,17 +4054,15 @@ main_loop:
             PREDICTED(FOR_ITER);
             /* before: [iter]; after: [iter, iter()] *or* [] */
             PyObject *iter = TOP();
-            #if 1
             if (Py_TYPE(iter) == &PyRangeIter_Type) {
                 PyValue nextv = _PyRangeIter_NextValue(iter);
-                if (nextv == PyValue_NULL) {
+                if (PyValue_IsNULL(nextv)) {
                     goto for_iter_error;
                 }
                 PUSH_VALUE(nextv);
                 PREDICT(STORE_FAST);
                 DISPATCH();
             }
-            #endif
             PyObject *next = (*Py_TYPE(iter)->tp_iternext)(iter);
             if (next != NULL) {
                 PUSH(next);
@@ -4269,7 +4267,7 @@ main_loop:
             }
 
             PUSH_VALUE(res);
-            if (res == PyValue_NULL)
+            if (PyValue_IsNULL(res))
                 goto error;
             CHECK_EVAL_BREAKER();
             DISPATCH();
@@ -4281,8 +4279,8 @@ main_loop:
             sp = stack_pointer;
             res = call_function(tstate, &trace_info, &sp, oparg, NULL);
             stack_pointer = sp;
-            PUSH(res);
-            if (res == PyValue_NULL) {
+            PUSH_VALUE(res);
+            if (PyValue_IsNULL(res)) {
                 goto error;
             }
             CHECK_EVAL_BREAKER();
@@ -4300,10 +4298,10 @@ main_loop:
             sp = stack_pointer;
             res = call_function(tstate, &trace_info, &sp, oparg, names);
             stack_pointer = sp;
-            PUSH(res);
+            PUSH_VALUE(res);
             Py_DECREF(names);
 
-            if (res == PyValue_NULL) {
+            if (PyValue_IsNULL(res)) {
                 goto error;
             }
             CHECK_EVAL_BREAKER();
@@ -4699,7 +4697,7 @@ missing_arguments(PyThreadState *tstate, PyCodeObject *co,
         end = start + co->co_kwonlyargcount;
     }
     for (i = start; i < end; i++) {
-        if (GETLOCAL(i) == PyValue_NULL) {
+        if (PyValue_IsNULL(GETLOCAL(i))) {
             PyObject *raw = PyTuple_GET_ITEM(co->co_varnames, i);
             PyObject *name = PyObject_Repr(raw);
             if (name == NULL) {
@@ -4728,7 +4726,7 @@ too_many_positional(PyThreadState *tstate, PyCodeObject *co,
     assert((co->co_flags & CO_VARARGS) == 0);
     /* Count missing keyword-only args. */
     for (i = co_argcount; i < co_argcount + co->co_kwonlyargcount; i++) {
-        if (GETLOCAL(i) != PyValue_NULL) {
+        if (!PyValue_IsNULL(GETLOCAL(i))) {
             kwonly_given++;
         }
     }
@@ -4956,7 +4954,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
             continue;
 
         kw_found:
-            if (GETLOCAL(j) != PyValue_NULL) {
+            if (!PyValue_IsNULL(GETLOCAL(j))) {
                 _PyErr_Format(tstate, PyExc_TypeError,
                             "%U() got multiple values for argument '%S'",
                           con->fc_qualname, keyword);
@@ -4980,7 +4978,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         Py_ssize_t m = co->co_argcount - defcount;
         Py_ssize_t missing = 0;
         for (i = argcount; i < m; i++) {
-            if (GETLOCAL(i) == PyValue_NULL) {
+            if (PyValue_IsNULL(GETLOCAL(i))) {
                 missing++;
             }
         }
@@ -4996,7 +4994,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
         if (defcount) {
             PyObject **defs = &PyTuple_GET_ITEM(con->fc_defaults, 0);
             for (; i < defcount; i++) {
-                if (GETLOCAL(m+i) == PyValue_NULL) {
+                if (PyValue_IsNULL(GETLOCAL(m+i))) {
                     PyObject *def = defs[i];
                     Py_INCREF(def);
                     SETLOCAL(m+i, def);
@@ -5009,7 +5007,7 @@ _PyEval_MakeFrameVector(PyThreadState *tstate,
     if (co->co_kwonlyargcount > 0) {
         Py_ssize_t missing = 0;
         for (i = co->co_argcount; i < total_args; i++) {
-            if (GETLOCAL(i) != PyValue_NULL)
+            if (!PyValue_IsNULL(GETLOCAL(i)))
                 continue;
             PyObject *varname = PyTuple_GET_ITEM(co->co_varnames, i);
             if (con->fc_kwdefaults != NULL) {
@@ -5432,8 +5430,9 @@ unpack_iterable(PyThreadState *tstate, PyObject *v,
     return 1;
 
 Error:
-    for (; i > 0; i--, sp++)
-        Py_DECREF(*sp);
+    for (; i > 0; i--, sp++) {
+        PyValue_DECREF(*sp);
+    }
     Py_XDECREF(it);
     return 0;
 }
@@ -6398,7 +6397,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
         case STORE_FAST:
         {
             PyValue *fastlocals = f->f_localsplus;
-            if (GETLOCAL(oparg) == PyValue_FromObject(v))
+            if (GETLOCAL(oparg).bits == PyValue_FromObject(v).bits)
                 SETLOCAL(oparg, (PyObject *)NULL);
             break;
         }

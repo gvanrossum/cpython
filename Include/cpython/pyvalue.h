@@ -30,7 +30,7 @@ Tag |  Meaning                  | Encoding
 */
 
 // Extract the tag
-#define PyValue_Tag(x) ((x) & 7)
+static inline PyValue_Tag(PyValue v) { return v.bits & 7; }
 
 // Tag values
 #define PyValue_TagInt 1
@@ -39,27 +39,54 @@ Tag |  Meaning                  | Encoding
 // Range of taggable ints (inclusive range)
 #define PyValue_MinInt ((1LL << 60) - (1LL << 61))
 #define PyValue_MaxInt ((1LL << 60) - 1)
-#define PyValue_InIntRange(v) (PyValue_MinInt <= (v) && (v) <= PyValue_MaxInt)
+// TODO: Change MIN <= x <= MAX into ((unsigned)((signed)x - MIN) <= (MAX - MIN)
+#define PyValue_InIntRange(i) (PyValue_MinInt <= (i) && (i) <= PyValue_MaxInt)
 
 // Macros to check what we have
-#define PyValue_IsInt(x) (PyValue_Tag(x) == PyValue_TagInt)
-#define PyValue_IsFloat(x) 0  // XXX TODO
-#define PyValue_IsObject(x) (PyValue_Tag(x) == PyValue_TagObject)
+#define PyValue_IsInt(v) (PyValue_Tag(v) == PyValue_TagInt)
+#define PyValue_IsFloat(v) 0  // XXX TODO
+#define PyValue_IsObject(v) (PyValue_Tag(v) == PyValue_TagObject)
+#define PyValue_IsNULL(v) (v.bits == 0)
 
 // Decoding macros
 #ifdef Py_DEBUG
-#define PyValue_AsInt(x) (PyValue_IsInt(x) ? (x) >> 3 : (abort(), 0))
-#define PyValue_AsFloat(x) (0.0)  // XXX TODO
-#define PyValue_AsObject(x) ((PyObject *)(x))
+#define PyValue_AsInt(v) (PyValue_IsInt(v) ? (int64_t)((v).bits) >> 3 : (abort(), 0))
+#define PyValue_AsFloat(v) (0.0)  // XXX TODO
+#define PyValue_AsObject(v) ((PyObject *)((v).bits))
 #else /* Py_DEBUG */
-#define PyValue_AsInt(x) ((x) >> 3)
-#define PyValue_AsFloat(x) (0.0)  // XXX TODO
-#define PyValue_AsObject(x) ((PyObject *)(x))
+#define PyValue_AsInt(v) ((int64_t)((v).bits) >> 3)
+#define PyValue_AsFloat(v) (0.0)  // XXX TODO
+#define PyValue_AsObject(v) ((PyObject *)((v).bits))
 #endif /* Py_DEBUG */
 
-// Encoding macros
-#define PyValue_FromInt(x) ((PyValue)((x) << 3) | PyValue_TagInt)
-#define PyValue_FromObject(x) (((PyValue)(x)) | PyValue_TagObject)
+// Inline functions for encoding
+
+typedef union convert {
+     uint64_t bits;
+     int64_t i;
+     // double d;
+     PyObject *p;
+     PyValue v;
+} _PyConvert;
+
+static inline PyValue
+PyValue_FromInt(int64_t i)
+{
+    assert(PyValue_InIntRange(i));
+    _PyConvert u;
+    u.i = i << 3;
+    u.bits |= PyValue_TagInt;
+    return u.v;
+}
+
+static inline PyValue
+PyValue_FromObject(PyObject *p)
+{
+    _PyConvert u;
+    u.p = p;
+    u.bits |= PyValue_TagObject;
+    return u.v;
+}
 
 #else
 #error "This only works for 32- and 64-bit pointers"
@@ -99,13 +126,13 @@ PyValue PyValue_Unbox(PyObject *);  // Unboxes smaller int objects
 PyObject *PyValue_Box(PyValue);  // Boxes non-pointer values
 PyObject *PyValue_BoxInPlace(PyValue *);  // Boxes in-place
 
-#define PyValue_CLEAR(v)               \
-    do {                               \
-        PyValue _py_tcl = (v);         \
-        if (_py_tcl != PyValue_NULL) { \
-            (v) = PyValue_NULL;        \
-            PyValue_DECREF(_py_tcl);   \
-        }                              \
+#define PyValue_CLEAR(v)                \
+    do {                                \
+        PyValue _py_tcl = (v);          \
+        if (!PyValue_IsNULL(_py_tcl)) { \
+            (v) = PyValue_NULL;         \
+            PyValue_DECREF(_py_tcl);    \
+        }                               \
     } while (0)
 
 #define PyValue_DECREF(v)                        \
@@ -121,13 +148,13 @@ PyObject *PyValue_BoxInPlace(PyValue *);  // Boxes in-place
     }
 
 #define PyValue_XDECREF(v)                            \
-    if (PyValue_IsObject(v) && (v) != PyValue_NULL) { \
+    if (PyValue_IsObject(v) && !PyValue_IsNULL(v)) {  \
         PyObject *_py_txd = PyValue_AsObject(v);      \
         Py_DECREF(_py_txd);                           \
     }
 
 #define PyValue_XINCREF(v)                            \
-    if (PyValue_IsObject(v) && (v) != PyValue_NULL) { \
+    if (PyValue_IsObject(v) && !PyValue_IsNULL(v)) {  \
         PyObject *_py_dxi = PyValue_AsObject(v);      \
         Py_INCREF(_py_dxi);                           \
     }
