@@ -34,6 +34,9 @@ static inline PyObject* _PyLong_GetZero(void)
 static inline PyObject* _PyLong_GetOne(void)
 { return __PyLong_GetSmallInt_internal(1); }
 
+// Add two PyValues when at least one is a tagged int
+PyAPI_FUNC(PyValue) _PyValue_Add(PyValue, PyValue);
+
 #ifdef __cplusplus
 }
 #endif

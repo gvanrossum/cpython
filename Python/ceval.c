@@ -16,6 +16,7 @@
 #include "pycore_ceval.h"         // _PyEval_SignalAsyncExc()
 #include "pycore_code.h"          // _PyCode_InitOpcache()
 #include "pycore_initconfig.h"    // _PyStatus_OK()
+#include "pycore_long.h"          // _PyValue_Add()
 #include "pycore_object.h"        // _PyObject_GC_TRACK()
 #include "pycore_pyerrors.h"      // _PyErr_Fetch()
 #include "pycore_pylifecycle.h"   // _PyErr_Print()
@@ -1463,6 +1464,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
 
 /* Local variable macros */
 
+/* In defiance of the naming convention, GETLOCAL() returns a PyValue */
 #define GETLOCAL(i)     (fastlocals[i])
 
 /* The SETLOCAL() macro must not DECREF the local variable in-place and
@@ -2089,6 +2091,22 @@ main_loop:
         }
 
         case TARGET(BINARY_ADD): {
+            PyValue vright = TOP_VALUE();
+            PyValue vleft = SECOND_VALUE();
+            if (PyValue_IsInt(vleft) || PyValue_IsInt(vright)) {
+                PyValue vsum = _PyValue_Add(vleft, vright);
+                if (!PyValue_IsNULL(vsum)) {
+                    PyValue_DECREF(vleft);
+                    PyValue_DECREF(vright);
+                    BASIC_STACKADJ(-1);
+                    SET_TOP_VALUE(vsum);
+                    if (PyValue_IsNULL(vsum))
+                        goto error;
+                    DISPATCH();
+                }
+                // Clear error and try again using objects
+                PyErr_Clear();
+            }
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *sum;

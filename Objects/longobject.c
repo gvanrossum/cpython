@@ -3094,6 +3094,69 @@ long_add(PyLongObject *a, PyLongObject *b)
     return (PyObject *)z;
 }
 
+PyValue
+_PyValue_Add(PyValue v, PyValue w)
+{
+    if (PyValue_IsInt(v)) {
+        if (PyValue_IsInt(w)) {
+            int64_t iv = PyValue_AsInt(v);
+            int64_t iw = PyValue_AsInt(w);
+            // Since iv and iw each fit in 61 bits, the sum can't overflow
+            int64_t sum = iv + iw;
+            // But it can still be out of range for a tagged integer
+            if (PyValue_InIntRange(sum)) {
+                // fprintf(stderr, "(a) return %zd\n", sum);
+                return PyValue_FromInt(sum);
+            }
+            else {
+                return PyValue_FromObject(PyLong_FromLongLong(sum));
+            }
+        }
+        else if (PyValue_IsObject(w)) {
+            PyObject *ow = PyValue_AsObject(w);
+            if (PyLong_CheckExact(ow)) {
+                PyLongObject *low = (PyLongObject *)ow;
+                Py_ssize_t size = low->ob_base.ob_size;
+                if (((size_t)size + 1) < 3) {
+                    int64_t iv = PyValue_AsInt(v);
+                    int64_t iw = size * low->ob_digit[0];
+                    int64_t sum = iv + iw;
+                    if (PyValue_InIntRange(sum)) {
+                        // fprintf(stderr, "(b) return %zd\n", sum);
+                        return PyValue_FromInt(sum);
+                    }
+                    else {
+                        return PyValue_FromObject(PyLong_FromLongLong(sum));
+                    }
+                }
+            }
+        }
+    }
+    else if (PyValue_IsInt(w)) {
+        if (PyValue_IsObject(v)) {
+            PyObject *ov = PyValue_AsObject(v);
+            if (PyLong_CheckExact(ov)) {
+                PyLongObject *lov = (PyLongObject *)ov;
+                Py_ssize_t size = lov->ob_base.ob_size;
+                if (((size_t)size + 1) < 3) {
+                    int64_t iw = PyValue_AsInt(w);
+                    int64_t iv = size * lov->ob_digit[0];
+                    int64_t sum = iv + iw;
+                    if (PyValue_InIntRange(sum)) {
+                        // fprintf(stderr, "(c) return %zd\n", sum);
+                        return PyValue_FromInt(sum);
+                    }
+                    else {
+                        return PyValue_FromObject(PyLong_FromLongLong(sum));
+                    }
+                }
+            }
+        }
+    }
+    // fprintf(stderr, "Giving up after all\n");
+    return PyValue_NULL;  // Caller should box values and call PyNumber_Add()
+}
+
 static PyObject *
 long_sub(PyLongObject *a, PyLongObject *b)
 {
