@@ -4476,6 +4476,104 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             goto dispatch_opcode;
         }
 
+        case TARGET(LAZY_LOAD_CONSTANT): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "LAZY_LOAD_CONSTANT not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_STRING): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_STRING not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_INT): {
+            PyObject *value = PyLong_FromLong(oparg);
+            PUSH(value);
+            DISPATCH();
+        }
+
+        case TARGET(MAKE_LONG): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_LONG not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_FLOAT): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_FLOAT not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_COMPLEX): {
+            assert(!PyErr_Occurred());
+            PyObject *imago = POP();
+            PyObject *realo = TOP();
+            if (!PyFloat_CheckExact(imago) || !PyFloat_CheckExact(realo)) {
+                _PyErr_SetString(tstate, PyExc_TypeError, "Args for MAKE_COMPLEX are not floats");
+                goto error;
+            }
+            double reald = PyFloat_AS_DOUBLE(realo);
+            double imagd = PyFloat_AS_DOUBLE(imago);
+            Py_DECREF(realo);
+            Py_DECREF(imago);
+            PyObject *value = PyComplex_FromDoubles(reald, imagd);
+            if (value == NULL) {
+                goto error;
+            }
+            SET_TOP(value);
+            DISPATCH();
+        }
+
+        case TARGET(MAKE_FROZEN_SET): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_FROZEN_SET not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_CODE_OBJECT): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_CODE_OBJECT not yet implemented");
+            goto error;
+        }
+
+        case TARGET(MAKE_BYTES): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_BYTES not yet implemented");
+            goto error;
+        }
+
+        case TARGET(LOAD_COMMON_CONSTANT): {
+            PyObject *value;
+            switch (oparg) {
+            case 0:
+                value = Py_None;
+                break;
+            case 1:
+                value = Py_False;
+                break;
+            case 2:
+                value = Py_True;
+                break;
+            case 3:
+                value = Py_Ellipsis;
+                break;
+            default:
+                _PyErr_SetString(tstate, PyExc_SystemError, "Bad oparg for LOAD_COMMON_CONSTANT");
+                goto error;
+            }
+            Py_INCREF(value);
+            PUSH(value);
+            DISPATCH();
+        }
+
+        case TARGET(RETURN_CONSTANT): {
+            // XXX
+            _PyErr_SetString(tstate, PyExc_SystemError, "RETURN_CONSTANT not yet implemented");
+            goto error;
+        }
+
 
 #if USE_COMPUTED_GOTOS
         _unknown_opcode:
