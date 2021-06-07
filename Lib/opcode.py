@@ -217,4 +217,17 @@ def_op('DICT_MERGE', 164)
 def_op('DICT_UPDATE', 165)
 def_op('CALL_METHOD_KW', 166)
 
+def_op('LAZY_LOAD_CONSTANT', 170)
+hasconst.append(170)
+def_op('MAKE_STRING', 171)
+def_op('MAKE_INT', 172)
+def_op('MAKE_LONG', 173)
+def_op('MAKE_FLOAT', 174)
+def_op('MAKE_COMPLEX', 175)
+def_op('MAKE_FROZEN_SET', 176)
+def_op('MAKE_CODE_OBJECT', 177)
+def_op('MAKE_BYTES', 178)
+def_op('LOAD_COMMON_CONSTANT', 179)
+def_op('RETURN_CONSTANT', 180)
+
 del def_op, name_op, jrel_op, jabs_op

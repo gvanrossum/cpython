@@ -136,6 +136,17 @@ extern "C" {
 #define DICT_MERGE              164
 #define DICT_UPDATE             165
 #define CALL_METHOD_KW          166
+#define LAZY_LOAD_CONSTANT      170
+#define MAKE_STRING             171
+#define MAKE_INT                172
+#define MAKE_LONG               173
+#define MAKE_FLOAT              174
+#define MAKE_COMPLEX            175
+#define MAKE_FROZEN_SET         176
+#define MAKE_CODE_OBJECT        177
+#define MAKE_BYTES              178
+#define LOAD_COMMON_CONSTANT    179
+#define RETURN_CONSTANT         180
 #ifdef NEED_OPCODE_JUMP_TABLES
 static uint32_t _PyOpcode_RelativeJump[8] = {
     0U,
