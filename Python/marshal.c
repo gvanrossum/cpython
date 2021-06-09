@@ -1523,6 +1523,46 @@ getfilesize(FILE *fp)
         return (off_t)st.st_size;
 }
 
+// TODO: Move into codeobject.c
+static PyObject *
+new_pyc_object(Py_buffer *bytes) {
+    assert(sizeof(struct lazy_header) == 16*sizeof(char));
+    assert(bytes->itemsize == sizeof(char));
+    PyObject *obj = bytes->obj;
+    assert(PyBytes_CheckExact(obj));
+    char *buf = PyBytes_AsString(obj);
+    Py_ssize_t len = bytes->len;
+    assert(buf == bytes->buf);
+    assert(len == PyBytes_Size(obj));
+    struct lazy_pyc *pyc = PyObject_Calloc(1, sizeof(struct lazy_pyc));
+    if (pyc == NULL) {
+        return PyErr_NoMemory();
+    }
+    Py_INCREF(obj);
+    pyc->keepalive = obj;
+
+    pyc->header = buf;
+    uint32_t *p = (char *) (pyc->header + 1);
+
+    pyc->n_code_objects = *p++;
+    pyc->code_offsets = p;
+    p += pyc->n_code_objects;
+
+    pyc->n_consts = *p++;
+    pyc->const_offsets = p;
+    p += pyc->n_consts;
+
+    pyc->n_strings = *p++;
+    pyc->string_offsets = p;
+    p += pyc->n_strings;
+
+    pyc->n_blobs = *p++;
+    pyc->blob_offsets = p;
+    p += pyc->n_blobs;
+
+    return _PyCode_NewDehydrated(pyc, 0);
+}
+
 /* If we can get the size of the file up-front, and it's reasonably small,
  * read it in one gulp and delegate to ...FromString() instead.  Much quicker
  * than reading a byte at a time from file; speeds .pyc imports.
@@ -1768,6 +1808,11 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes)
 {
     RFILE rf;
     char *s = bytes->buf;
+    if (s[0] == 'P' && strncmp(s, "PYC.", 4) == 0) {
+        // New PYC object (lazy loading code objects),
+        // only supported by loads(), not by load()
+        return new_pyc_object(bytes);
+    }
     Py_ssize_t n = bytes->len;
     PyObject* result;
     rf.fp = NULL;

@@ -1652,6 +1652,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     if (PyDTrace_FUNCTION_ENTRY_ENABLED())
         dtrace_function_entry(f);
 
+    if (!_PyCode_IsHydrated(co)) {
+        if (_PyCode_Hydrate(co) == NULL) {
+            goto exit_eval_frame;
+        }
+    }
+
     /* Increment the warmup counter and quicken if warm enough
      * _Py_Quicken is idempotent so we don't worry about overflow */
     if (!PyCodeObject_IsWarmedUp(co)) {

@@ -300,10 +300,17 @@ _PyCode_Validate(struct _PyCodeConstructor *con)
 static void
 init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
 {
-    int nlocalsplus = (int)PyTuple_GET_SIZE(con->localsplusnames);
-    int nlocals, ncellvars, nfreevars;
-    get_localsplus_counts(con->localsplusnames, con->localspluskinds,
-                          &nlocals, &ncellvars, &nfreevars);
+    if (con->pyc == NULL) {
+        int nlocalsplus = (int)PyTuple_GET_SIZE(con->localsplusnames);
+        int nlocals, ncellvars, nfreevars;
+        get_localsplus_counts(con->localsplusnames, con->localspluskinds,
+                            &nlocals, &ncellvars, &nfreevars);
+        // derived values
+        co->co_nlocalsplus = nlocalsplus;
+        co->co_nlocals = nlocals;
+        co->co_ncellvars = ncellvars;
+        co->co_nfreevars = nfreevars;
+    }
 
     Py_INCREF(con->filename);
     co->co_filename = con->filename;
@@ -311,22 +318,24 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     co->co_name = con->name;
     co->co_flags = con->flags;
 
-    Py_INCREF(con->code);
-    co->co_code = con->code;
-    co->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AS_STRING(con->code);
-    co->co_firstlineno = con->firstlineno;
-    Py_INCREF(con->linetable);
-    co->co_linetable = con->linetable;
+    if (con->pyc == NULL) {
+        Py_INCREF(con->code);
+        co->co_code = con->code;
+        co->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AS_STRING(con->code);
+        co->co_firstlineno = con->firstlineno;
+        Py_INCREF(con->linetable);
+        co->co_linetable = con->linetable;
 
-    Py_INCREF(con->consts);
-    co->co_consts = con->consts;
-    Py_INCREF(con->names);
-    co->co_names = con->names;
+        Py_INCREF(con->consts);
+        co->co_consts = con->consts;
+        Py_INCREF(con->names);
+        co->co_names = con->names;
 
-    Py_INCREF(con->localsplusnames);
-    co->co_localsplusnames = con->localsplusnames;
-    // We take ownership of the kinds array.
-    co->co_localspluskinds = con->localspluskinds;
+        Py_INCREF(con->localsplusnames);
+        co->co_localsplusnames = con->localsplusnames;
+        // We take ownership of the kinds array.
+        co->co_localspluskinds = con->localspluskinds;
+    }
 
     co->co_argcount = con->argcount;
     co->co_posonlyargcount = con->posonlyargcount;
@@ -334,15 +343,13 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
 
     co->co_stacksize = con->stacksize;
 
-    Py_INCREF(con->exceptiontable);
-    co->co_exceptiontable = con->exceptiontable;
+    if (con->pyc == NULL) {
+        Py_INCREF(con->exceptiontable);
+        co->co_exceptiontable = con->exceptiontable;
+    }
 
     /* derived values */
     co->co_cell2arg = NULL;  // This will be set soon.
-    co->co_nlocalsplus = nlocalsplus;
-    co->co_nlocals = nlocals;
-    co->co_ncellvars = ncellvars;
-    co->co_nfreevars = nfreevars;
     co->co_varnames = NULL;
     co->co_cellvars = NULL;
     co->co_freevars = NULL;
@@ -371,14 +378,16 @@ _PyCode_New(struct _PyCodeConstructor *con)
         return NULL;
     }
 
-    if (intern_strings(con->names) < 0) {
-        return NULL;
-    }
-    if (intern_string_constants(con->consts, NULL) < 0) {
-        return NULL;
-    }
-    if (intern_strings(con->localsplusnames) < 0) {
-        return NULL;
+    if (con->pyc == NULL) {
+        if (intern_strings(con->names) < 0) {
+            return NULL;
+        }
+        if (intern_string_constants(con->consts, NULL) < 0) {
+            return NULL;
+        }
+        if (intern_strings(con->localsplusnames) < 0) {
+            return NULL;
+        }
     }
 
     PyCodeObject *co = PyObject_New(PyCodeObject, &PyCode_Type);
@@ -396,7 +405,7 @@ _PyCode_New(struct _PyCodeConstructor *con)
     }
 
     /* Create mapping between cells and arguments if needed. */
-    if (co->co_ncellvars) {
+    if (co->co_ncellvars && con->pyc == NULL) {
         int totalargs = co->co_argcount +
                         co->co_kwonlyargcount +
                         ((co->co_flags & CO_VARARGS) != 0) +
@@ -1766,4 +1775,106 @@ _PyCode_ConstantKey(PyObject *op)
         Py_DECREF(obj_id);
     }
     return key;
+}
+
+
+/******************
+ * Hydration
+ ******************/
+
+uint64_t
+_PyHydra_IntFromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
+{
+    // LEB128, from Wikipedia
+    uint64_t result = 0;
+    unsigned int shift = 0;
+    while (1) {
+        uint8_t byte = *lazy_get_pointer(pyc, *p_offset);
+        (*p_offset)++;
+        result |= (byte & 0x7F) << shift;
+        if ((byte & 0x80) == 0)
+            break;
+        shift += 7;
+        if (shift >= 63) {
+            PyErr_SetString(PyExc_SystemError, "Varint too big");
+            return -1;
+        }
+    }
+    return result;
+}
+
+PyObject *
+_PyHydra_StringFromOffset(struct lazy_pyc *pyc, uint32_t offset)
+{
+    uint64_t size = _PyHydra_IntFromOffset(pyc, &offset);
+    if (size < 0)
+        return NULL;
+    if (size >= 0xFFFF) {
+        PyErr_SetString(PyExc_SystemError, "String is very long");
+        return NULL;
+    }
+    return PyUnicode_DecodeUTF8Stateful(
+        lazy_get_pointer(pyc, offset),
+        size,
+        "surrogatepass",
+        NULL
+    );
+}
+
+PyObject *
+_PyHydra_StringFromIndex(struct lazy_pyc *pyc, int index)
+{
+    if (0 <= index && index < pyc->n_strings) {
+        return _PyHydra_StringFromOffset(pyc, pyc->string_offsets[index]);
+    }
+    PyErr_Format(PyExc_SystemError, "String index %d out of range", index);
+    return NULL;
+}
+
+struct code_template {
+    uint32_t flags;
+    uint32_t argcount;
+    uint32_t posonlyargcount;
+    uint32_t kwonlyargcount;
+    uint32_t nlocals;
+    uint32_t stacksize;
+    uint32_t name;
+    uint32_t exceptiontable;
+    uint32_t filename;
+    uint32_t locationtable;
+    uint32_t docstring;
+};
+
+PyCodeObject *
+_PyCode_NewDehydrated(struct lazy_pyc *pyc, int index)
+{
+    assert(!PyErr_Occurred());
+    struct code_template *template =
+        (struct code_template *) lazy_get_pointer(pyc, pyc->code_offsets[index]);
+    struct _PyCodeConstructor con = { 0 };  // All zeros
+    con.flags = template->flags;
+    con.argcount = template->argcount;
+    con.posonlyargcount = template->posonlyargcount;
+    con.kwonlyargcount = template->kwonlyargcount;
+    // TODO: nlocals (doesn't exist any more?)
+    con.stacksize = template->stacksize;
+    con.name = _PyHydra_StringFromIndex(pyc, template->name);
+    // Delayed: exceptiontable
+    con.filename = _PyHydra_StringFromIndex(pyc, template->filename);
+    // Delayed: locationtable
+    // Delayed: docstring
+    con.pyc = pyc;
+
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+
+    return _PyCode_New(&con);
+}
+
+PyCodeObject *
+_PyCode_Hydrate(PyCodeObject *code)
+{
+    PyErr_SetString(PyExc_SystemError, "Can't hydrate yet");
+    return NULL;
 }

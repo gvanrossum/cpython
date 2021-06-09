@@ -230,6 +230,9 @@ struct _PyCodeConstructor {
 
     /* used by the eval loop */
     PyObject *exceptiontable;
+
+    /* For dehydrated code objects */
+    struct lazy_pyc *pyc;
 };
 
 // Using an "arguments struct" like this is helpful for maintainability
@@ -254,6 +257,56 @@ PyAPI_FUNC(PyObject *) _PyCode_GetVarnames(PyCodeObject *);
 PyAPI_FUNC(PyObject *) _PyCode_GetCellvars(PyCodeObject *);
 PyAPI_FUNC(PyObject *) _PyCode_GetFreevars(PyCodeObject *);
 
+
+/* PEP 6xx (not named yet)
+ * Lazy loading PYC files
+ * Assumes little-endian everything
+ */
+
+#ifdef WORDS_BIGENDIAN
+#error "This only works on little-endian hardware"
+#endif
+
+struct lazy_header {
+    char magic[4];
+    uint16_t version;
+    uint16_t flags;
+    uint32_t metadata_offset;
+    uint32_t total_size;
+};
+
+struct lazy_pyc {
+    // TODO: lazy_pyc itself should be an object
+    // so we can use its refcount to drop the keepalive
+    // (until we make it an object, it's essentially immortal)
+    PyObject *keepalive;  // Object to keep alive during hydration
+                          // Must be immutable, immovable
+    struct lazy_header *header;
+    int n_code_objects;
+    uint32_t *code_offsets;
+    int n_consts;
+    uint32_t *const_offsets;
+    int n_strings;
+    uint32_t *string_offsets;
+    int n_blobs;
+    uint32_t *blob_offsets;
+};
+
+static inline unsigned char *
+lazy_get_pointer(struct lazy_pyc *pyc, uint32_t offset)
+{
+    char *base = (char *) pyc->header;
+    return base + offset;
+}
+
+static inline int
+_PyCode_IsHydrated(PyCodeObject *code)
+{
+    return code->co_firstinstr != NULL;
+}
+
+PyCodeObject *_PyCode_NewDehydrated(struct lazy_pyc *pyc, int index);
+PyCodeObject *_PyCode_Hydrate(PyCodeObject *code);
 
 #ifdef __cplusplus
 }
