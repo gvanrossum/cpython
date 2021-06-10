@@ -292,7 +292,7 @@ struct lazy_pyc {
     uint32_t *blob_offsets;
 };
 
-static inline unsigned char *
+static /*inline*/ unsigned char *
 lazy_get_pointer(struct lazy_pyc *pyc, uint32_t offset)
 {
     char *base = (char *) pyc->header;

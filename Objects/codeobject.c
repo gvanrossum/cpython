@@ -311,6 +311,13 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         co->co_ncellvars = ncellvars;
         co->co_nfreevars = nfreevars;
     }
+    else {
+        // These will be set by hydration
+        co->co_nlocalsplus = 0;
+        co->co_nlocals = 0;
+        co->co_ncellvars = 0;
+        co->co_nfreevars = 0;
+    }
 
     Py_INCREF(con->filename);
     co->co_filename = con->filename;
@@ -337,7 +344,14 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         co->co_localspluskinds = con->localspluskinds;
     }
     else {
+        co->co_code = NULL;
         co->co_firstinstr = NULL;
+        co->co_firstlineno = con->firstlineno;
+        co->co_linetable = NULL;
+        co->co_consts = NULL;
+        co->co_names = NULL;
+        co->co_localsplusnames = NULL;
+        co->co_localspluskinds = NULL;
         co->co_pyc = con->pyc;
         co->co_pyc_index = 0;
     }
@@ -383,13 +397,17 @@ _PyCode_New(struct _PyCodeConstructor *con)
         return NULL;
     }
 
-    if (con->pyc == NULL) {
+    if (con->names != NULL) {
         if (intern_strings(con->names) < 0) {
             return NULL;
         }
+    }
+    if (con->consts != NULL) {
         if (intern_string_constants(con->consts, NULL) < 0) {
             return NULL;
         }
+    }
+    if (con->localsplusnames != NULL) {
         if (intern_strings(con->localsplusnames) < 0) {
             return NULL;
         }
@@ -1276,6 +1294,7 @@ code_repr(PyCodeObject *co)
         lineno = co->co_firstlineno;
     else
         lineno = -1;
+    // TODO: indicate hydration status
     if (co->co_filename && PyUnicode_Check(co->co_filename)) {
         return PyUnicode_FromFormat(
             "<code object %U at %p, file \"%U\", line %d>",
@@ -1316,6 +1335,7 @@ code_richcompare(PyObject *self, PyObject *other, int op)
     if (!eq) goto unequal;
     eq = co->co_firstlineno == cp->co_firstlineno;
     if (!eq) goto unequal;
+    // TODO: Hydrate everything before we use it
     eq = PyObject_RichCompareBool(co->co_code, cp->co_code, Py_EQ);
     if (eq <= 0) goto unequal;
 
@@ -1362,6 +1382,8 @@ static Py_hash_t
 code_hash(PyCodeObject *co)
 {
     Py_hash_t h, h0, h1, h2, h3, h4;
+    // TODO: Hydrate all co_consts, co_names, co_localsplusnames
+    // (or don't depend on any of those)
     h0 = PyObject_Hash(co->co_name);
     if (h0 == -1) return -1;
     h1 = PyObject_Hash(co->co_code);
@@ -1605,6 +1627,16 @@ static struct PyMethodDef code_methods[] = {
     {NULL, NULL}                /* sentinel */
 };
 
+static PyObject *
+code_getattr(PyObject *self, PyObject *attr)
+{
+    PyCodeObject *code = (PyCodeObject *)self;
+    if (_PyCode_Hydrate(code) == NULL) {
+        return NULL;
+    }
+    return PyObject_GenericGetAttr(self, attr);
+}
+
 
 PyTypeObject PyCode_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -1623,7 +1655,7 @@ PyTypeObject PyCode_Type = {
     (hashfunc)code_hash,                /* tp_hash */
     0,                                  /* tp_call */
     0,                                  /* tp_str */
-    PyObject_GenericGetAttr,            /* tp_getattro */
+    code_getattr,                       /* tp_getattro */
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                 /* tp_flags */
@@ -1787,7 +1819,7 @@ _PyCode_ConstantKey(PyObject *op)
  * Hydration
  ******************/
 
-uint64_t
+static uint64_t
 _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
 {
     // LEB128, from Wikipedia
@@ -1808,7 +1840,7 @@ _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
     return result;
 }
 
-PyObject *
+static PyObject *
 _PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     uint64_t size = _PyHydra_UInt64FromOffset(pyc, &offset);
@@ -1821,7 +1853,7 @@ _PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset)
     return PyBytes_FromStringAndSize(lazy_get_pointer(pyc, offset), size);
 }
 
-PyObject *
+static PyObject *
 _PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index)
 {
     // TODO: Bounds check
@@ -1829,7 +1861,7 @@ _PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index)
     return _PyHydra_BytesFromOffset(pyc, offset);
 }
 
-PyObject *
+static PyObject *
 _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     uint64_t size = _PyHydra_UInt64FromOffset(pyc, &offset);
@@ -1847,7 +1879,7 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
     );
 }
 
-PyObject *
+static PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
     if (0 <= index && index < pyc->n_strings) {
@@ -1877,19 +1909,21 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, int index)
     assert(!PyErr_Occurred());
     struct code_template *template =
         (struct code_template *) lazy_get_pointer(pyc, pyc->code_offsets[index]);
-    struct _PyCodeConstructor con = { 0 };  // All zeros
-    con.argcount = template->argcount;
-    con.posonlyargcount = template->posonlyargcount;
-    con.kwonlyargcount = template->kwonlyargcount;
-    con.stacksize = template->stacksize;
-    con.flags = template->flags;
-    con.filename = _PyHydra_UnicodeFromIndex(pyc, template->filename);
-    con.name = _PyHydra_UnicodeFromIndex(pyc, template->name);
-    con.firstlineno = template->firstlineno;
-    // Delayed: docstring, locationtable, exceptiontable
-    // Delayed: code, names, localsplusnames, localspluskinds
-    con.pyc = pyc;
-
+    struct _PyCodeConstructor con = {
+        .argcount = template->argcount,
+        .posonlyargcount = template->posonlyargcount,
+        .kwonlyargcount = template->kwonlyargcount,
+        .stacksize = template->stacksize,
+        .flags = template->flags,
+        .filename = _PyHydra_UnicodeFromIndex(pyc, template->filename),
+        .name = _PyHydra_UnicodeFromIndex(pyc, template->name),
+        .firstlineno = template->firstlineno,
+        .pyc = pyc,
+        // The following members will be updated during hydration:
+        // docstring, locationtable, exceptiontable,
+        // code, names, localsplusnames, localspluskinds,
+        // plus anything derived from them.
+    };
     if (PyErr_Occurred()) {
         return NULL;
     }
@@ -1928,35 +1962,33 @@ _PyCode_Hydrate(PyCodeObject *code)
     if (code->co_exceptiontable == NULL) {
         return NULL;
     }
-    uint32_t *code_offset = template + 1;
-    uint32_t code_size = *code_offset++;
-    code->co_code =
-        PyBytes_FromStringAndSize(lazy_get_pointer(pyc, code_offset),
-                                  code_size*2);
+    uint32_t *pointer = template + 1;  // TODO: cast
+    uint32_t code_size = *pointer++;
+    code->co_code = PyBytes_FromStringAndSize(pointer, code_size*2);
     if (code->co_code == NULL) {
         return NULL;
     }
-    uint32_t *offset = code_offset + (code_size + 1) / 2;
-    assert((Py_ssize_t)offset & 3 == 0);
-    uint32_t n_names = *offset++;
+    pointer += (code_size + 1) / 2;
+    assert(((Py_ssize_t)pointer & 3) == 0);
+    uint32_t n_names = *pointer++;
     code->co_names = PyTuple_New(n_names);
     if (code->co_names == NULL) {
         return NULL;
     }
     for (uint32_t i = 0; i < n_names; i++) {
-        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *offset++);
+        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
         if (name == NULL) {
             return NULL;
         }
         PyTuple_SetItem(code->co_names, i, name);
     }
-    uint32_t n_localsplus = *offset++;
+    uint32_t n_localsplus = *pointer++;
     code->co_localsplusnames = PyTuple_New(n_localsplus);
     if (code->co_localsplusnames == NULL) {
         return NULL;
     }
     for (uint32_t i = 0; i < n_localsplus; i++) {
-        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *offset++);
+        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
         if (name == NULL) {
             return NULL;
         }
@@ -1967,7 +1999,7 @@ _PyCode_Hydrate(PyCodeObject *code)
         PyErr_NoMemory();
         return NULL;
     }
-    memcpy(code->co_localspluskinds, offset, n_localsplus);
+    memcpy(code->co_localspluskinds, pointer, n_localsplus);
     // TODO: Compute all the derived values
 
     code->co_firstinstr = PyBytes_AsString(code->co_code);  // Mark hydrated
