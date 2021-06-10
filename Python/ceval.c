@@ -1124,6 +1124,11 @@ PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
     if (builtins == NULL) {
         return NULL;
     }
+    if (PyUnicode_CheckExact(co) && !_PyCode_IsHydrated((PyCodeObject *)co)) {
+        if (_PyCode_Hydrate((PyCodeObject *)co) == NULL) {
+            return NULL;
+        }
+    }
     PyFrameConstructor desc = {
         .fc_globals = globals,
         .fc_builtins = builtins,

@@ -122,7 +122,8 @@ struct PyCodeObject {
     unsigned char co_opcache_size;  // length of co_opcache.
 
     /* Hydration */
-    struct lazy_pyc *pyc;
+    struct lazy_pyc *co_pyc;  // Structure holding data read from PYC file
+    int co_pyc_index;  // Index of *this* object in the list of code objects
 };
 
 /* Masks for co_flags above */

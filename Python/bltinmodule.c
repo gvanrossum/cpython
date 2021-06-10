@@ -9,6 +9,7 @@
 #include "pycore_pystate.h"       // _PyThreadState_GET()
 #include "pycore_tuple.h"         // _PyTuple_FromArray()
 #include "pycore_ceval.h"         // _PyEval_Vector()
+#include "pycore_code.h"          // _PyCode_Hydrate)
 
 _Py_IDENTIFIER(__builtins__);
 _Py_IDENTIFIER(__dict__);
@@ -1053,6 +1054,9 @@ builtin_exec_impl(PyObject *module, PyObject *source, PyObject *globals,
 
     if (PyCode_Check(source)) {
         if (PySys_Audit("exec", "O", source) < 0) {
+            return NULL;
+        }
+        if (_PyCode_Hydrate((PyCodeObject *)source) == NULL) {
             return NULL;
         }
 
