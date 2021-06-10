@@ -231,3 +231,12 @@ def_op('LOAD_COMMON_CONSTANT', 179)
 def_op('RETURN_CONSTANT', 180)
 
 del def_op, name_op, jrel_op, jabs_op
+
+_specialized_instructions = [
+    "JUMP_ABSOLUTE_QUICK",
+    "LOAD_ATTR_ADAPTIVE",
+    "LOAD_ATTR_SPLIT_KEYS",
+    "LOAD_ATTR_WITH_HINT",
+    "LOAD_ATTR_SLOT",
+    "LOAD_ATTR_MODULE",
+]
