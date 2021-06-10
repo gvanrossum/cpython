@@ -304,8 +304,11 @@ def _get_name_info(name_index, get_name, **extrainfo):
     """
     argval = name_index
     if get_name is not None:
-        argval = get_name(name_index, **extrainfo)
-        argrepr = argval
+        try:
+            argval = get_name(name_index, **extrainfo)
+            argrepr = argval
+        except Exception:
+            argrepr = repr(argval)
     else:
         argrepr = repr(argval)
     return argval, argrepr
@@ -408,7 +411,7 @@ def disassemble(co, lasti=-1, *, file=None):
 
 def _disassemble_recursive(co, *, file=None, depth=None):
     disassemble(co, file=file)
-    if depth is None or depth > 0:
+    if (depth is None or depth > 0) and co.co_consts:
         if depth is not None:
             depth = depth - 1
         for x in co.co_consts:
