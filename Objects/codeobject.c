@@ -300,6 +300,7 @@ _PyCode_Validate(struct _PyCodeConstructor *con)
 static void
 init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
 {
+    // TODO: Don't check for con->pyc, just check whether things are NULL
     if (con->pyc == NULL) {
         int nlocalsplus = (int)PyTuple_GET_SIZE(con->localsplusnames);
         int nlocals, ncellvars, nfreevars;
@@ -366,6 +367,9 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         Py_INCREF(con->exceptiontable);
         co->co_exceptiontable = con->exceptiontable;
     }
+    else {
+        co->co_exceptiontable = NULL;
+    }
 
     /* derived values */
     co->co_cell2arg = NULL;  // This will be set soon.
@@ -389,6 +393,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
 PyCodeObject *
 _PyCode_New(struct _PyCodeConstructor *con)
 {
+    // TODO: Allow name/filename to be NULL
     /* Ensure that strings are ready Unicode string */
     if (PyUnicode_READY(con->name) < 0) {
         return NULL;
@@ -672,6 +677,9 @@ PyLineTable_InitAddressRange(char *linetable, Py_ssize_t length, int firstlineno
 int
 _PyCode_InitAddressRange(PyCodeObject* co, PyCodeAddressRange *bounds)
 {
+    if (co->co_linetable == NULL) {
+        return -1;
+    }
     char *linetable = PyBytes_AS_STRING(co->co_linetable);
     Py_ssize_t length = PyBytes_GET_SIZE(co->co_linetable);
     PyLineTable_InitAddressRange(linetable, length, co->co_firstlineno, bounds);

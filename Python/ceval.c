@@ -4998,8 +4998,11 @@ skip_to_next_entry(unsigned char *p, unsigned char *end) {
 static int
 get_exception_handler(PyCodeObject *code, int index, int *level, int *handler, int *lasti)
 {
-    unsigned char *start = (unsigned char *)PyBytes_AS_STRING(code->co_exceptiontable);
-    unsigned char *end = start + PyBytes_GET_SIZE(code->co_exceptiontable);
+    unsigned char* start = NULL, *end = NULL;
+    if (code->co_exceptiontable != NULL) {
+        start = (unsigned char*)PyBytes_AS_STRING(code->co_exceptiontable);
+        end = start + PyBytes_GET_SIZE(code->co_exceptiontable);
+    }
     /* Invariants:
      * start_table == end_table OR
      * start_table points to a legal entry and end_table points
