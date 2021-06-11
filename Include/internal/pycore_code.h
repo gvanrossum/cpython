@@ -365,6 +365,7 @@ struct lazy_pyc {
     // (until we make it an object, it's essentially immortal)
     PyObject *keepalive;  // Object to keep alive during hydration
                           // Must be immutable, immovable
+    PyObject *consts;  // co_consts, shared between all code objects here
     struct lazy_header *header;
     int n_code_objects;
     uint32_t *code_offsets;

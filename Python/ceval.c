@@ -7,7 +7,7 @@
 
 /* enable more aggressive intra-module optimizations, where available */
 /* affects both release and debug builds - see bpo-43271 */
-#define PY_LOCAL_AGGRESSIVE
+// TODO: Re-enable #define PY_LOCAL_AGGRESSIVE
 
 #include "Python.h"
 #include "pycore_abstract.h"      // _PyIndex_Check()
@@ -1114,7 +1114,7 @@ PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
     if (builtins == NULL) {
         return NULL;
     }
-    if (PyUnicode_CheckExact(co) && !_PyCode_IsHydrated((PyCodeObject *)co)) {
+    if (PyCode_Check(co) && !_PyCode_IsHydrated((PyCodeObject *)co)) {
         if (_PyCode_Hydrate((PyCodeObject *)co) == NULL) {
             return NULL;
         }
@@ -1130,6 +1130,61 @@ PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
         .fc_closure = NULL
     };
     return _PyEval_Vector(tstate, &desc, locals, NULL, 0, NULL);
+}
+
+
+/* Constants in PYC files are lazily loaded.
+ * For now, just construct a code object for these and eval it.
+ * (This is slow, and may defeat the purpose -- but each constant
+ * is only evaluated once, and the alternative would be a lot of code
+ * for a prototype.)
+ */
+static PyObject *
+call_constant(PyThreadState *tstate, PyCodeObject *code, int oparg, PyObject *globals)
+{
+    struct lazy_pyc *pyc = code->co_pyc;
+    if (pyc == NULL) {
+        _PyErr_SetString(tstate, PyExc_SystemError,
+                         "call_constant from non-PYC code");
+        return NULL;
+    }
+    PyObject *result = PyTuple_GetItem(pyc->consts, oparg);
+    if (result != NULL) {
+        Py_INCREF(result);
+        return result;
+    }
+    uint32_t offset = pyc->const_offsets[oparg];
+    uint32_t *pointer = lazy_get_pointer(pyc, offset);
+    uint32_t stacksize = *pointer++;
+    uint32_t n_instrs = *pointer++;
+    PyObject *bytecode = PyBytes_FromStringAndSize(pointer, 2*n_instrs);
+    if (bytecode == NULL) {
+        return NULL;
+    }
+    PyObject *name = PyUnicode_FromString("<dummy>");
+    if (name == NULL) {
+        Py_DECREF(name);
+        Py_DECREF(bytecode);
+        return NULL;
+    }
+    Py_INCREF(name);  // For filename, right?
+    struct _PyCodeConstructor con = {
+        .name = name,
+        .filename = name,
+        .stacksize = stacksize,
+        .pyc = pyc,
+    };
+    PyCodeObject *newcode = _PyCode_New(&con);
+    if (newcode == NULL) {
+        Py_DECREF(bytecode);
+        return NULL;
+    }
+    newcode->co_code = bytecode;
+    newcode->co_firstinstr = PyBytes_AsString(bytecode);
+    unsigned char *cp = pointer;
+    result = PyEval_EvalCode(newcode, globals, NULL);
+    Py_DECREF(newcode);  // TODO: DECREF(bytecode) or not?
+    return result;
 }
 
 
@@ -4439,9 +4494,15 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(LAZY_LOAD_CONSTANT): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "LAZY_LOAD_CONSTANT not yet implemented");
-            goto error;
+            PyObject *value = GETITEM(consts, oparg);
+            if (value == NULL) {
+                value = call_constant(tstate, co, oparg, GLOBALS());
+                if (value == NULL) {
+                    goto error;
+                }
+            }
+            PUSH(value);
+            DISPATCH();
         }
 
         case TARGET(MAKE_STRING): {

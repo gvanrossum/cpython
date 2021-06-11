@@ -2002,6 +2002,17 @@ _PyCode_Hydrate(PyCodeObject *code)
     memcpy(code->co_localspluskinds, pointer, n_localsplus);
     // TODO: Compute all the derived values
 
+    if (pyc->consts == NULL) {
+        pyc->consts = PyTuple_New(pyc->n_consts);
+        if (pyc->consts == NULL) {
+            // TODO: DECREF some stuff
+            PyErr_NoMemory();
+            return NULL;
+        }
+    }
+    Py_INCREF(pyc->consts);
+    code->co_consts = pyc->consts;  // The items may still be NULL!!!
+
     code->co_firstinstr = PyBytes_AsString(code->co_code);  // Mark hydrated
     return code;
 }
