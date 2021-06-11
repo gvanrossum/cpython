@@ -1861,7 +1861,7 @@ _PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset)
     return PyBytes_FromStringAndSize(lazy_get_pointer(pyc, offset), size);
 }
 
-static PyObject *
+PyObject *
 _PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index)
 {
     // TODO: Bounds check
@@ -1912,7 +1912,7 @@ struct code_template {
 };
 
 PyCodeObject *
-_PyCode_NewDehydrated(struct lazy_pyc *pyc, int index)
+_PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
 {
     assert(!PyErr_Occurred());
     struct code_template *template =

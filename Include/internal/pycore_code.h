@@ -390,8 +390,10 @@ _PyCode_IsHydrated(PyCodeObject *code)
     return code->co_firstinstr != NULL;
 }
 
-PyCodeObject *_PyCode_NewDehydrated(struct lazy_pyc *pyc, int index);
+PyCodeObject *_PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index);
 PyCodeObject *_PyCode_Hydrate(PyCodeObject *code);
+PyObject *_PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index);
+
 
 #ifdef __cplusplus
 }

@@ -4506,9 +4506,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_STRING): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_STRING not yet implemented");
-            goto error;
+            PyObject *value = _PyHydra_BytesFromIndex(co->co_pyc, oparg);
+            if (value == NULL) {
+                goto error;
+            }
+            PUSH(value);
+            DISPATCH();
         }
 
         case TARGET(MAKE_INT): {
