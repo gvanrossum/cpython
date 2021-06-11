@@ -4595,9 +4595,13 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(RETURN_CONSTANT): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "RETURN_CONSTANT not yet implemented");
-            goto error;
+            retval = POP();
+            Py_INCREF(retval);
+            PyTuple_SET_ITEM(co->co_pyc->consts, oparg, retval);
+            assert(EMPTY());
+            f->f_state = FRAME_RETURNED;
+            f->f_stackdepth = 0;
+            goto exiting;
         }
 
 
