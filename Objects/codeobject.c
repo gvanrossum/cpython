@@ -1830,7 +1830,7 @@ _PyCode_ConstantKey(PyObject *op)
  * Hydration
  ******************/
 
-static uint64_t
+uint64_t
 _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
 {
     // LEB128, from Wikipedia
@@ -1851,7 +1851,7 @@ _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
     return result;
 }
 
-static PyObject *
+PyObject *
 _PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     uint64_t size = _PyHydra_UInt64FromOffset(pyc, &offset);
@@ -1872,7 +1872,7 @@ _PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index)
     return _PyHydra_BytesFromOffset(pyc, offset);
 }
 
-static PyObject *
+PyObject *
 _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     uint64_t size = _PyHydra_UInt64FromOffset(pyc, &offset);
@@ -1890,7 +1890,7 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
     );
 }
 
-static PyObject *
+PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
     if (0 <= index && index < pyc->n_strings) {

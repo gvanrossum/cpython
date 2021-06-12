@@ -1777,15 +1777,15 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
     }
 
-#ifdef LLTRACE
-    {
-        int r = _PyDict_ContainsId(GLOBALS(), &PyId___ltrace__);
-        if (r < 0) {
-            goto exit_eval_frame;
-        }
-        lltrace = r;
-    }
-#endif
+// #ifdef LLTRACE
+//     {
+//         int r = _PyDict_ContainsId(GLOBALS(), &PyId___ltrace__);
+//         if (r < 0) {
+//             goto exit_eval_frame;
+//         }
+//         lltrace = r;
+//     }
+// #endif
 
     if (throwflag) { /* support for generator.throw() */
         goto error;
@@ -4596,7 +4596,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_STRING): {
-            PyObject *value = _PyHydra_BytesFromIndex(co->co_pyc, oparg);
+            PyObject *value = _PyHydra_UnicodeFromIndex(co->co_pyc, oparg);
             if (value == NULL) {
                 goto error;
             }
@@ -4649,15 +4649,21 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_CODE_OBJECT): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_CODE_OBJECT not yet implemented");
-            goto error;
+            PyObject *value = _PyCode_NewDehydrated(co->co_pyc, oparg);
+            if (value == NULL) {
+                goto error;
+            }
+            PUSH(value);
+            DISPATCH();
         }
 
         case TARGET(MAKE_BYTES): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_BYTES not yet implemented");
-            goto error;
+            PyObject *value = _PyHydra_BytesFromIndex(co->co_pyc, oparg);
+            if (value == NULL) {
+                goto error;
+            }
+            PUSH(value);
+            DISPATCH();
         }
 
         case TARGET(LOAD_COMMON_CONSTANT): {
