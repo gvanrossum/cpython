@@ -366,6 +366,7 @@ struct lazy_pyc {
     PyObject *keepalive;  // Object to keep alive during hydration
                           // Must be immutable, immovable
     PyObject *consts;  // co_consts, shared between all code objects here
+    PyObject *names;  // co_names, ditto
     struct lazy_header *header;
     int n_code_objects;
     uint32_t *code_offsets;
@@ -393,7 +394,7 @@ _PyCode_IsHydrated(PyCodeObject *code)
 PyCodeObject *_PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index);
 PyCodeObject *_PyCode_Hydrate(PyCodeObject *code);
 PyObject *_PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index);
-
+PyObject *_PyHydrate_LoadName(struct lazy_pyc *pyc, uint32_t index);
 
 #ifdef __cplusplus
 }

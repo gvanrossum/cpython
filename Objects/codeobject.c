@@ -56,6 +56,9 @@ intern_string_constants(PyObject *tuple, int *modified)
 {
     for (Py_ssize_t i = PyTuple_GET_SIZE(tuple); --i >= 0; ) {
         PyObject *v = PyTuple_GET_ITEM(tuple, i);
+        if (v == NULL) {
+            continue;
+        }
         if (PyUnicode_CheckExact(v)) {
             if (PyUnicode_READY(v) == -1) {
                 return -1;
@@ -1897,6 +1900,18 @@ _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
     return NULL;
 }
 
+PyObject *
+_PyHydrate_LoadName(struct lazy_pyc *pyc, uint32_t index)
+{
+    PyObject *name = _PyHydra_UnicodeFromIndex(pyc, index);
+    if (name == NULL) {
+        return NULL;
+    }
+    Py_INCREF(name);
+    PyTuple_SET_ITEM(pyc->names, index, name);
+    return name;
+}
+
 struct code_template {
     uint32_t argcount;
     uint32_t posonlyargcount;
@@ -2020,6 +2035,17 @@ _PyCode_Hydrate(PyCodeObject *code)
     }
     Py_INCREF(pyc->consts);
     code->co_consts = pyc->consts;  // The items may still be NULL!!!
+
+    if (pyc->names == NULL) {
+        pyc->names = PyTuple_New(pyc->n_strings);
+        if (pyc->names == NULL) {
+            // TODO: DECREF some stuff
+            PyErr_NoMemory();
+            return NULL;
+        }
+    }
+    Py_INCREF(pyc->names);
+    code->co_names = pyc->names;  // The items may still be NULL!!!
 
     code->co_firstinstr = PyBytes_AsString(code->co_code);  // Mark hydrated
     return code;
