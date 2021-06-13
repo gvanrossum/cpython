@@ -1541,8 +1541,8 @@ new_pyc_object(Py_buffer *bytes) {
     Py_INCREF(obj);
     pyc->keepalive = obj;
 
-    pyc->header = buf;
-    uint32_t *p = (char *) (pyc->header + 1);
+    pyc->header = (struct lazy_header *)buf;
+    uint32_t *p = (uint32_t *) (pyc->header + 1);
 
     pyc->n_code_objects = *p++;
     pyc->code_offsets = p;

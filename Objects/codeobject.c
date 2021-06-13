@@ -1969,7 +1969,7 @@ struct code_template {
     uint32_t exceptiontable;  // Bytes index
 };
 
-PyCodeObject *
+PyObject *
 _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
 {
     assert(!PyErr_Occurred());
@@ -1995,7 +1995,7 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
         return NULL;
     }
 
-    return _PyCode_New(&con);
+    return (PyObject *)_PyCode_New(&con);
 }
 
 // Mutate in place; return 'code' on success, NULL on failure
@@ -2025,9 +2025,9 @@ _PyCode_Hydrate(PyCodeObject *code)
     if (code->co_exceptiontable == NULL) {
         return NULL;
     }
-    uint32_t *pointer = template + 1;  // TODO: cast
+    uint32_t *pointer = (uint32_t *)(template + 1);  // TODO: cast
     uint32_t code_size = *pointer++;
-    code->co_code = PyBytes_FromStringAndSize(pointer, code_size*2);
+    code->co_code = PyBytes_FromStringAndSize((char *)pointer, code_size*2);
     if (code->co_code == NULL) {
         return NULL;
     }
@@ -2089,6 +2089,6 @@ _PyCode_Hydrate(PyCodeObject *code)
     Py_INCREF(pyc->names);
     code->co_names = pyc->names;  // The items may still be NULL!!!
 
-    code->co_firstinstr = PyBytes_AsString(code->co_code);  // Mark hydrated
+    code->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(code->co_code);  // Mark hydrated
     return code;
 }

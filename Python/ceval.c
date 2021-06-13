@@ -1154,10 +1154,10 @@ call_constant(PyThreadState *tstate, PyCodeObject *code, int oparg, PyObject *gl
         return result;
     }
     uint32_t offset = pyc->const_offsets[oparg];
-    uint32_t *pointer = lazy_get_pointer(pyc, offset);
+    uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
-    uint32_t n_instrs = *pointer++;
-    PyObject *bytecode = PyBytes_FromStringAndSize(pointer, 2*n_instrs);
+    Py_ssize_t n_instrs = *pointer++;
+    PyObject *bytecode = PyBytes_FromStringAndSize((char *)pointer, 2*n_instrs);
     if (bytecode == NULL) {
         return NULL;
     }
@@ -1182,13 +1182,13 @@ call_constant(PyThreadState *tstate, PyCodeObject *code, int oparg, PyObject *gl
         return NULL;
     }
     newcode->co_code = bytecode;
-    newcode->co_firstinstr = PyBytes_AsString(bytecode);
+    newcode->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(bytecode);
     Py_INCREF(pyc->consts);
     newcode->co_consts = pyc->consts;
     Py_INCREF(pyc->names);
     newcode->co_names = pyc->names;
-    unsigned char *cp = pointer;
-    result = PyEval_EvalCode(newcode, globals, NULL);
+    // unsigned char *cp = pointer;
+    result = PyEval_EvalCode((PyObject *)newcode, globals, NULL);
     Py_DECREF(newcode);  // TODO: DECREF(bytecode) or not?
     return result;
 }
