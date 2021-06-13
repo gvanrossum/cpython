@@ -234,7 +234,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                 )
             value = code.co_consts[oparg]
             if is_immediate(value):
-                if isinstance(value, int):
+                if type(value) == int:
                     opcode = MAKE_INT
                     oparg = value
                 else:
