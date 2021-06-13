@@ -1852,6 +1852,20 @@ _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
 }
 
 PyObject *
+_PyHydra_FloatFromOffset(struct lazy_pyc *pyc, uint32_t offset)
+{
+    double *alias = (double *)lazy_get_pointer(pyc, offset);
+    return PyFloat_FromDouble(*alias);
+}
+
+PyObject *
+_PyHydra_FloatFromIndex(struct lazy_pyc *pyc, uint32_t index)
+{
+    uint32_t offset = pyc->blob_offsets[index];
+    return _PyHydra_FloatFromOffset(pyc, offset);
+}
+
+PyObject *
 _PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     uint64_t size = _PyHydra_UInt64FromOffset(pyc, &offset);
