@@ -4611,9 +4611,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_LONG): {
-            // XXX
-            _PyErr_SetString(tstate, PyExc_SystemError, "MAKE_LONG not yet implemented");
-            goto error;
+            PyObject *value = _PyHydra_LongFromIndex(co->co_pyc, oparg);
+            if (value == NULL) {
+                goto error;
+            }
+            PUSH(value);
+            DISPATCH();
         }
 
         case TARGET(MAKE_FLOAT): {

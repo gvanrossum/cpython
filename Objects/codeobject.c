@@ -1852,6 +1852,35 @@ _PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset)
 }
 
 PyObject *
+_PyHydra_LongFromOffset(struct lazy_pyc *pyc, uint32_t offset)
+{
+    // TODO: This only goes up to 63 bits
+    uint64_t raw = _PyHydra_UInt64FromOffset(pyc, &offset);
+    if (raw == -1 && PyErr_Occurred()) {
+        return NULL;
+    }
+    long long cooked;
+    if (raw & 1) {
+        cooked = raw & ~1;
+        cooked >>= 1;
+        cooked = -cooked;
+    }
+    else {
+        cooked = raw >> 1;
+    }
+    PyObject *res = PyLong_FromLongLong(cooked);
+    return res;
+}
+
+PyObject *
+_PyHydra_LongFromIndex(struct lazy_pyc *pyc, uint32_t index)
+{
+    uint32_t offset = pyc->blob_offsets[index];
+    PyObject *res = _PyHydra_LongFromOffset(pyc, offset);
+    return res;
+}
+
+PyObject *
 _PyHydra_FloatFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 {
     double *alias = (double *)lazy_get_pointer(pyc, offset);
