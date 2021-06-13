@@ -356,9 +356,9 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         co->co_names = NULL;
         co->co_localsplusnames = NULL;
         co->co_localspluskinds = NULL;
-        co->co_pyc = con->pyc;
-        co->co_pyc_index = 0;
     }
+    co->co_pyc = con->pyc;
+    co->co_pyc_index = 0;
 
     co->co_argcount = con->argcount;
     co->co_posonlyargcount = con->posonlyargcount;
@@ -1942,6 +1942,7 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
         .name = _PyHydra_UnicodeFromIndex(pyc, template->name),
         .firstlineno = template->firstlineno,
         .pyc = pyc,
+        .pyc_index = index,
         // The following members will be updated during hydration:
         // docstring, locationtable, exceptiontable,
         // code, names, localsplusnames, localspluskinds,
@@ -1951,11 +1952,7 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
         return NULL;
     }
 
-    PyCodeObject *code = _PyCode_New(&con);
-    if (code != NULL) {
-        code->co_pyc_index = index;
-    }
-    return code;
+    return _PyCode_New(&con);
 }
 
 // Mutate in place; return 'code' on success, NULL on failure
@@ -2010,20 +2007,22 @@ _PyCode_Hydrate(PyCodeObject *code)
     if (code->co_localsplusnames == NULL) {
         return NULL;
     }
-    for (uint32_t i = 0; i < n_localsplus; i++) {
-        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
-        if (name == NULL) {
+    if (n_localsplus) {
+        for (uint32_t i = 0; i < n_localsplus; i++) {
+            PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
+            if (name == NULL) {
+                return NULL;
+            }
+            PyTuple_SetItem(code->co_localsplusnames, i, name);
+        }
+        code->co_localspluskinds = PyObject_Calloc(n_localsplus, sizeof(char));
+        if (code->co_localspluskinds == NULL) {
+            PyErr_NoMemory();
             return NULL;
         }
-        PyTuple_SetItem(code->co_localsplusnames, i, name);
+        memcpy(code->co_localspluskinds, pointer, n_localsplus);
+        // TODO: Compute all the derived values
     }
-    code->co_localspluskinds = PyObject_Calloc(n_localsplus, sizeof(char));
-    if (code->co_localspluskinds == NULL) {
-        PyErr_NoMemory();
-        return NULL;
-    }
-    memcpy(code->co_localspluskinds, pointer, n_localsplus);
-    // TODO: Compute all the derived values
 
     if (pyc->consts == NULL) {
         pyc->consts = PyTuple_New(pyc->n_consts);
