@@ -12,26 +12,51 @@ with test_tools.imports_under_tool("pyco"):
     import updis
 
 
+def compare(a, b):
+    if isinstance(a, tuple):
+        for x, y in zip(a, b):
+            compare(x, y)
+    assert a == b, (a, b)
+    assert type(a) == type(b), (a, b)
+
+
 class TestNewPyc(unittest.TestCase):
     def test_basic(self):
-        value = (1, 2, 3, 3.14, 1+2j, "ab", b"cd", None, False, True, ...)
-        source = f"a = {value!r}"
-        builder = pyco.build_source(source)
-        pyco.report(builder)
-        data = pyco.serialize_source(source)
-        print(repr(data))
-        code = marshal.loads(data)
-        # code = compile(source, "", "exec")
-        print(code)
-        print(code.co_code)
-        dis.dis(code.co_code)
-        ns = {}
-        exec(code, ns)
-        a = ns["a"]
-        assert a == value, (a, value)
-        for x, y in zip(a, value):
-            assert type(x) is type(y), (x, y)
-        print("Done: a =", a)
+        values = [
+            0,
+            2,
+            300,
+            # 99999,
+            3.14,
+            -2.7,
+            1+2j,
+            "abc",
+            b"cde",
+            None,
+            False,
+            True,
+            ...,
+            (),
+            (0, 1, "aa", "bb"),
+            (1, 2, (3, 4), 5, 6),
+        ]
+        for value in values:
+            print("==========", value, "==========")
+            source = f"a = {value!r}"
+            builder = pyco.build_source(source)
+            pyco.report(builder)
+            data = pyco.serialize_source(source)
+            # print(repr(data))
+            code = marshal.loads(data)
+            # print(code)
+            # print(code.co_code)
+            # dis.dis(code.co_code)
+            ns = {}
+            exec(code, ns)
+            a = ns["a"]
+            compare(a, value)
+            print("Match:", source)
+        print("Done")
 
 
 if __name__ == "__main__":
