@@ -2,6 +2,7 @@
 
 import dis
 import marshal
+import time
 import unittest
 
 from test import test_tools
@@ -21,7 +22,7 @@ def compare(a, b):
 
 
 class TestNewPyc(unittest.TestCase):
-    def _test_basic(self):
+    def test_test_basic(self):
         values = [
             0,
             2,
@@ -72,6 +73,30 @@ class TestNewPyc(unittest.TestCase):
         dis.dis(f, depth=0)
         # breakpoint()
         assert f(1, 10) == 11
+
+    def test_speed(self):
+        body = "    a, b = b, a\n"*100
+        functions = [
+            f"def f{num}(a, b):\n{body}"
+            for num in range(100)
+        ]
+        source = "\n\n".join(functions)
+
+        code = compile(source, "<old>", "exec")
+        data = marshal.dumps(code)
+        t0 = time.time()
+        code = marshal.loads(data)
+        exec(code, {})
+        t1 = time.time()
+        print(f"Classic: {t1-t0:.3f}")
+
+        data = pyco.serialize_source(source, "<new>")
+        assert data.startswith(b"PYC.")
+        t0 = time.time()
+        code = marshal.loads(data)
+        exec(code, {})
+        t1 = time.time()
+        print(f"New PYC: {t1-t0:.3f}")
 
 
 if __name__ == "__main__":
