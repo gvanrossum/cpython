@@ -358,7 +358,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         co->co_localspluskinds = NULL;
     }
     co->co_pyc = con->pyc;
-    co->co_pyc_index = 0;
+    co->co_pyc_index = con->pyc_index;
 
     co->co_argcount = con->argcount;
     co->co_posonlyargcount = con->posonlyargcount;
@@ -2025,7 +2025,7 @@ _PyCode_Hydrate(PyCodeObject *code)
     if (code->co_exceptiontable == NULL) {
         return NULL;
     }
-    uint32_t *pointer = (uint32_t *)(template + 1);  // TODO: cast
+    uint32_t *pointer = (uint32_t *)(template + 1);
     uint32_t code_size = *pointer++;
     code->co_code = PyBytes_FromStringAndSize((char *)pointer, code_size*2);
     if (code->co_code == NULL) {
@@ -2089,6 +2089,7 @@ _PyCode_Hydrate(PyCodeObject *code)
     Py_INCREF(pyc->names);
     code->co_names = pyc->names;  // The items may still be NULL!!!
 
-    code->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(code->co_code);  // Mark hydrated
+    // Mark hydrated
+    code->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(code->co_code);
     return code;
 }

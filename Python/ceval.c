@@ -4600,6 +4600,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             if (value == NULL) {
                 goto error;
             }
+            // TODO: Intern string if appropriate
             PUSH(value);
             DISPATCH();
         }

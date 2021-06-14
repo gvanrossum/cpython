@@ -21,7 +21,7 @@ def compare(a, b):
 
 
 class TestNewPyc(unittest.TestCase):
-    def test_basic(self):
+    def _test_basic(self):
         values = [
             0,
             2,
@@ -58,6 +58,20 @@ class TestNewPyc(unittest.TestCase):
             compare(a, value)
             print("Match:", source)
         print("Done")
+
+    def test_function(self):
+        source = "def f(a, b):\n    return a + b"
+        builder = pyco.build_source(source)
+        pyco.report(builder)
+        data = pyco.serialize_source(source)
+        code = marshal.loads(data)
+        ns = {}
+        exec(code, ns)
+        f = ns["f"]
+        print("Disassembly of", f)
+        dis.dis(f, depth=0)
+        # breakpoint()
+        assert f(1, 10) == 11
 
 
 if __name__ == "__main__":
