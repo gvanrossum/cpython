@@ -519,7 +519,16 @@ w_complex_object(PyObject *v, char flag, WFILE *p)
         w_object(co->co_consts, p);
         w_object(co->co_names, p);
         w_object(co->co_localsplusnames, p);
-        w_string(co->co_localspluskinds, co->co_nlocalsplus, p);
+        {
+            PyObject *temp = PyBytes_FromStringAndSize(
+                co->co_localspluskinds,
+                co->co_nlocalsplus
+            );
+            assert(temp != NULL);
+            w_object(temp, p);
+            Py_DECREF(temp);
+        }
+        // w_string(co->co_localspluskinds, co->co_nlocalsplus, p);
         w_object(co->co_filename, p);
         w_object(co->co_name, p);
         w_long(co->co_firstlineno, p);
@@ -1351,15 +1360,31 @@ r_object(RFILE *p)
 
             assert(PyTuple_GET_SIZE(localsplusnames) < INT_MAX);
             int nlocalsplus = (int)PyTuple_GET_SIZE(localsplusnames);
-            if (nlocalsplus) {
-                if (_PyCode_InitLocalsPlusKinds(nlocalsplus,
-                                               &localspluskinds) < 0) {
-                    goto code_error;
-                }
-                for (int i = 0; i < nlocalsplus; i++) {
-                    localspluskinds[i] = r_byte(p);
+            {
+                PyObject *temp = r_object(p);
+                assert(temp != NULL);
+                assert(PyBytes_CheckExact(temp));
+                assert(PyBytes_GET_SIZE(temp) == nlocalsplus);
+                if (nlocalsplus > 0) {
+                    if (_PyCode_InitLocalsPlusKinds(
+                            nlocalsplus,
+                            &localspluskinds
+                        ) < 0) {
+                            goto code_error;
+                    }
+                    memcpy(localspluskinds, PyBytes_AS_STRING(temp), nlocalsplus);
+                    Py_DECREF(temp);
                 }
             }
+            // if (nlocalsplus) {
+            //     if (_PyCode_InitLocalsPlusKinds(nlocalsplus,
+            //                                    &localspluskinds) < 0) {
+            //         goto code_error;
+            //     }
+            //     for (int i = 0; i < nlocalsplus; i++) {
+            //         localspluskinds[i] = r_byte(p);
+            //     }
+            // }
 
             filename = r_object(p);
             if (filename == NULL)
