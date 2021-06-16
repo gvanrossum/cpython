@@ -82,23 +82,27 @@ class TestNewPyc(unittest.TestCase):
         ]
         source = "\n\n".join(functions)
 
+        def helper(data, label):
+            t0 = time.time()
+            codes = []
+            for _ in range(1000):
+                code = marshal.loads(data)
+                codes.append(code)
+            t1 = time.time()
+            print(f"{label} load: {t1-t0:.3f}")
+            t0 = time.time()
+            for code in codes:
+                exec(code, {})
+            t1 = time.time()
+            print(f"{label} exec: {t1-t0:.3f}")
+
         code = compile(source, "<old>", "exec")
         data = marshal.dumps(code)
-        t0 = time.time()
-        for _ in range(1000):
-            code = marshal.loads(data)
-            exec(code, {})
-        t1 = time.time()
-        print(f"Classic: {t1-t0:.3f}")
+        helper(data, "Classic")
 
         data = pyco.serialize_source(source, "<new>")
         assert data.startswith(b"PYC.")
-        t0 = time.time()
-        for _ in range(1000):
-            code = marshal.loads(data)
-            exec(code, {})
-        t1 = time.time()
-        print(f"New PYC: {t1-t0:.3f}")
+        helper(data, "New PYC")
 
 
 if __name__ == "__main__":
