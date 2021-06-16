@@ -85,16 +85,18 @@ class TestNewPyc(unittest.TestCase):
         code = compile(source, "<old>", "exec")
         data = marshal.dumps(code)
         t0 = time.time()
-        code = marshal.loads(data)
-        exec(code, {})
+        for _ in range(1000):
+            code = marshal.loads(data)
+            exec(code, {})
         t1 = time.time()
         print(f"Classic: {t1-t0:.3f}")
 
         data = pyco.serialize_source(source, "<new>")
         assert data.startswith(b"PYC.")
         t0 = time.time()
-        code = marshal.loads(data)
-        exec(code, {})
+        for _ in range(1000):
+            code = marshal.loads(data)
+            exec(code, {})
         t1 = time.time()
         print(f"New PYC: {t1-t0:.3f}")
 
