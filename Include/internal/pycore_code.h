@@ -48,6 +48,11 @@ typedef struct {
     uint32_t dk_version_or_hint;
 } _PyLoadAttrCache;
 
+typedef struct {
+    uint32_t module_keys_version;
+    uint32_t builtin_keys_version;
+} _PyLoadGlobalCache;
+
 /* Add specialized versions of entries to this union.
  *
  * Do not break the invariant: sizeof(SpecializedCacheEntry) == 8
@@ -62,6 +67,7 @@ typedef union {
     _PyEntryZero zero;
     _PyAdaptiveEntry adaptive;
     _PyLoadAttrCache load_attr;
+    _PyLoadGlobalCache load_global;
 } SpecializedCacheEntry;
 
 #define INSTRUCTIONS_PER_ENTRY (sizeof(SpecializedCacheEntry)/sizeof(_Py_CODEUNIT))
@@ -79,7 +85,7 @@ typedef union _cache_or_instruction {
  * The zeroth entry immediately precedes the instructions.
  */
 static inline SpecializedCacheEntry *
-_GetSpecializedCacheEntry(_Py_CODEUNIT *first_instr, Py_ssize_t n)
+_GetSpecializedCacheEntry(const _Py_CODEUNIT *first_instr, Py_ssize_t n)
 {
     SpecializedCacheOrInstruction *last_cache_plus_one = (SpecializedCacheOrInstruction *)first_instr;
     assert(&last_cache_plus_one->code[0] == first_instr);
@@ -126,7 +132,7 @@ offset_from_oparg_and_nexti(int oparg, int nexti)
  * nexti is used as it corresponds to the instruction pointer in the interpreter.
  * This doesn't check that an entry has been allocated for that instruction. */
 static inline SpecializedCacheEntry *
-_GetSpecializedCacheEntryForInstruction(_Py_CODEUNIT *first_instr, int nexti, int oparg)
+_GetSpecializedCacheEntryForInstruction(const _Py_CODEUNIT *first_instr, int nexti, int oparg)
 {
     return _GetSpecializedCacheEntry(
         first_instr,
@@ -258,8 +264,6 @@ PyAPI_FUNC(PyCodeObject *) _PyCode_New(struct _PyCodeConstructor *);
 
 /* Private API */
 
-int _PyCode_InitOpcache(PyCodeObject *co);
-
 /* Getters for internal PyCodeObject data. */
 PyAPI_FUNC(PyObject *) _PyCode_GetVarnames(PyCodeObject *);
 PyAPI_FUNC(PyObject *) _PyCode_GetCellvars(PyCodeObject *);
@@ -322,24 +326,30 @@ cache_backoff(_PyAdaptiveEntry *entry) {
 /* Specialization functions */
 
 int _Py_Specialize_LoadAttr(PyObject *owner, _Py_CODEUNIT *instr, PyObject *name, SpecializedCacheEntry *cache);
+int _Py_Specialize_LoadGlobal(PyObject *globals, PyObject *builtins, _Py_CODEUNIT *instr, PyObject *name, SpecializedCacheEntry *cache);
 
 #define SPECIALIZATION_STATS 0
+#define SPECIALIZATION_STATS_DETAILED 0
+
 #if SPECIALIZATION_STATS
 
-typedef struct _specialization_stats {
+typedef struct _stats {
     uint64_t specialization_success;
     uint64_t specialization_failure;
-    uint64_t loadattr_hit;
-    uint64_t loadattr_deferred;
-    uint64_t loadattr_miss;
-    uint64_t loadattr_deopt;
+    uint64_t hit;
+    uint64_t deferred;
+    uint64_t miss;
+    uint64_t deopt;
+#if SPECIALIZATION_STATS_DETAILED
+    PyObject *miss_types;
+#endif
 } SpecializationStats;
 
-extern SpecializationStats _specialization_stats;
-#define STAT_INC(name) _specialization_stats.name++
+extern SpecializationStats _specialization_stats[256];
+#define STAT_INC(opname, name) _specialization_stats[opname].name++
 void _Py_PrintSpecializationStats(void);
 #else
-#define STAT_INC(name) ((void)0)
+#define STAT_INC(opname, name) ((void)0)
 #endif
 
 

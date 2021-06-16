@@ -13,7 +13,7 @@
 #include "pycore_abstract.h"      // _PyIndex_Check()
 #include "pycore_call.h"          // _PyObject_FastCallDictTstate()
 #include "pycore_ceval.h"         // _PyEval_SignalAsyncExc()
-#include "pycore_code.h"          // _PyCode_InitOpcache()
+#include "pycore_code.h"
 #include "pycore_initconfig.h"    // _PyStatus_OK()
 #include "pycore_object.h"        // _PyObject_GC_TRACK()
 #include "pycore_moduleobject.h"
@@ -109,7 +109,6 @@ static long dxp[256];
 /* per opcode cache */
 static int opcache_min_runs = 1024;  /* create opcache when code executed this many times */
 #define OPCODE_CACHE_MAX_TRIES 20
-#define OPCACHE_STATS 0  /* Enable stats */
 
 // This function allows to deactivate the opcode cache. As different cache mechanisms may hold
 // references, this can mess with the reference leak detector functionality so the cache needs
@@ -119,22 +118,6 @@ _PyEval_DeactivateOpCache(void)
 {
     opcache_min_runs = 0;
 }
-
-#if OPCACHE_STATS
-static size_t opcache_code_objects = 0;
-static size_t opcache_code_objects_extra_mem = 0;
-
-static size_t opcache_global_opts = 0;
-static size_t opcache_global_hits = 0;
-static size_t opcache_global_misses = 0;
-
-static size_t opcache_attr_opts = 0;
-static size_t opcache_attr_hits = 0;
-static size_t opcache_attr_misses = 0;
-static size_t opcache_attr_deopts = 0;
-static size_t opcache_attr_total = 0;
-#endif
-
 
 #ifndef NDEBUG
 /* Ensure that tstate is valid: sanity check for PyEval_AcquireThread() and
@@ -360,48 +343,8 @@ PyEval_InitThreads(void)
 void
 _PyEval_Fini(void)
 {
-#if OPCACHE_STATS
-    fprintf(stderr, "-- Opcode cache number of objects  = %zd\n",
-            opcache_code_objects);
-
-    fprintf(stderr, "-- Opcode cache total extra mem    = %zd\n",
-            opcache_code_objects_extra_mem);
-
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "-- Opcode cache LOAD_GLOBAL hits   = %zd (%d%%)\n",
-            opcache_global_hits,
-            (int) (100.0 * opcache_global_hits /
-                (opcache_global_hits + opcache_global_misses)));
-
-    fprintf(stderr, "-- Opcode cache LOAD_GLOBAL misses = %zd (%d%%)\n",
-            opcache_global_misses,
-            (int) (100.0 * opcache_global_misses /
-                (opcache_global_hits + opcache_global_misses)));
-
-    fprintf(stderr, "-- Opcode cache LOAD_GLOBAL opts   = %zd\n",
-            opcache_global_opts);
-
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "-- Opcode cache LOAD_ATTR hits     = %zd (%d%%)\n",
-            opcache_attr_hits,
-            (int) (100.0 * opcache_attr_hits /
-                opcache_attr_total));
-
-    fprintf(stderr, "-- Opcode cache LOAD_ATTR misses   = %zd (%d%%)\n",
-            opcache_attr_misses,
-            (int) (100.0 * opcache_attr_misses /
-                opcache_attr_total));
-
-    fprintf(stderr, "-- Opcode cache LOAD_ATTR opts     = %zd\n",
-            opcache_attr_opts);
-
-    fprintf(stderr, "-- Opcode cache LOAD_ATTR deopts   = %zd\n",
-            opcache_attr_deopts);
-
-    fprintf(stderr, "-- Opcode cache LOAD_ATTR total    = %zd\n",
-            opcache_attr_total);
+#if SPECIALIZATION_STATS
+    _Py_PrintSpecializationStats();
 #endif
 }
 
@@ -1514,108 +1457,11 @@ eval_frame_handle_pending(PyThreadState *tstate)
                                      GETLOCAL(i) = value; \
                                      Py_XDECREF(tmp); } while (0)
 
-    /* macros for opcode cache */
-#define OPCACHE_CHECK() \
-    do { \
-        co_opcache = NULL; \
-        if (co->co_opcache != NULL) { \
-            unsigned char co_opcache_offset = \
-                co->co_opcache_map[next_instr - first_instr]; \
-            if (co_opcache_offset > 0) { \
-                assert(co_opcache_offset <= co->co_opcache_size); \
-                co_opcache = &co->co_opcache[co_opcache_offset - 1]; \
-                assert(co_opcache != NULL); \
-            } \
-        } \
-    } while (0)
-
-#define OPCACHE_DEOPT() \
-    do { \
-        if (co_opcache != NULL) { \
-            co_opcache->optimized = -1; \
-            unsigned char co_opcache_offset = \
-                co->co_opcache_map[next_instr - first_instr]; \
-            assert(co_opcache_offset <= co->co_opcache_size); \
-            co->co_opcache_map[co_opcache_offset] = 0; \
-            co_opcache = NULL; \
-        } \
-    } while (0)
-
-#define OPCACHE_DEOPT_LOAD_ATTR() \
-    do { \
-        if (co_opcache != NULL) { \
-            OPCACHE_STAT_ATTR_DEOPT(); \
-            OPCACHE_DEOPT(); \
-        } \
-    } while (0)
-
-#define OPCACHE_MAYBE_DEOPT_LOAD_ATTR() \
-    do { \
-        if (co_opcache != NULL && --co_opcache->optimized <= 0) { \
-            OPCACHE_DEOPT_LOAD_ATTR(); \
-        } \
-    } while (0)
-
-#if OPCACHE_STATS
-
-#define OPCACHE_STAT_GLOBAL_HIT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_hits++; \
-    } while (0)
-
-#define OPCACHE_STAT_GLOBAL_MISS() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_misses++; \
-    } while (0)
-
-#define OPCACHE_STAT_GLOBAL_OPT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_global_opts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_HIT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_hits++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_MISS() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_misses++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_OPT() \
-    do { \
-        if (co->co_opcache!= NULL) opcache_attr_opts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_DEOPT() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_deopts++; \
-    } while (0)
-
-#define OPCACHE_STAT_ATTR_TOTAL() \
-    do { \
-        if (co->co_opcache != NULL) opcache_attr_total++; \
-    } while (0)
-
-#else /* OPCACHE_STATS */
-
-#define OPCACHE_STAT_GLOBAL_HIT()
-#define OPCACHE_STAT_GLOBAL_MISS()
-#define OPCACHE_STAT_GLOBAL_OPT()
-
-#define OPCACHE_STAT_ATTR_HIT()
-#define OPCACHE_STAT_ATTR_MISS()
-#define OPCACHE_STAT_ATTR_OPT()
-#define OPCACHE_STAT_ATTR_DEOPT()
-#define OPCACHE_STAT_ATTR_TOTAL()
-
 #define JUMP_TO_INSTRUCTION(op) goto PREDICT_ID(op)
 
 #define GET_CACHE() \
     _GetSpecializedCacheEntryForInstruction(first_instr, INSTR_OFFSET(), oparg)
 
-#endif
 
 #define DEOPT_IF(cond, instname) if (cond) { goto instname ## _miss; }
 
@@ -1648,7 +1494,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     _Py_CODEUNIT *first_instr;
     PyObject *names;
     PyObject *consts;
-    _PyOpcache *co_opcache;
 
 #ifdef LLTRACE
     _Py_IDENTIFIER(__ltrace__);
@@ -1761,21 +1606,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
      */
     f->f_stackdepth = -1;
     f->f_state = FRAME_EXECUTING;
-
-    if (co->co_opcache_flag < opcache_min_runs) {
-        co->co_opcache_flag++;
-        if (co->co_opcache_flag == opcache_min_runs) {
-            if (_PyCode_InitOpcache(co) < 0) {
-                goto exit_eval_frame;
-            }
-#if OPCACHE_STATS
-            opcache_code_objects_extra_mem +=
-                PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT) +
-                sizeof(_PyOpcache) * co->co_opcache_size;
-            opcache_code_objects++;
-#endif
-        }
-    }
 
 // #ifdef LLTRACE
 //     {
@@ -3088,36 +2918,18 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(LOAD_GLOBAL): {
-            PyObject *name;
+            PREDICTED(LOAD_GLOBAL);
+            PyObject *name = GETITEM(names, oparg);
+            if (name == NULL) {
+                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                if (name == NULL) {
+                    goto error;
+                }
+            }
             PyObject *v;
             if (PyDict_CheckExact(GLOBALS())
                 && PyDict_CheckExact(BUILTINS()))
             {
-                OPCACHE_CHECK();
-                if (co_opcache != NULL && co_opcache->optimized > 0) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
-
-                    if (lg->globals_ver ==
-                            ((PyDictObject *)GLOBALS())->ma_version_tag
-                        && lg->builtins_ver ==
-                           ((PyDictObject *)BUILTINS())->ma_version_tag)
-                    {
-                        PyObject *ptr = lg->ptr;
-                        OPCACHE_STAT_GLOBAL_HIT();
-                        assert(ptr != NULL);
-                        Py_INCREF(ptr);
-                        PUSH(ptr);
-                        DISPATCH();
-                    }
-                }
-
-                name = GETITEM(names, oparg);
-                if (name == NULL) {
-                    name = _PyHydrate_LoadName(co->co_pyc, oparg);
-                    if (name == NULL) {
-                        goto error;
-                    }
-                }
                 v = _PyDict_LoadGlobal((PyDictObject *)GLOBALS(),
                                        (PyDictObject *)BUILTINS(),
                                        name);
@@ -3130,38 +2942,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                     }
                     goto error;
                 }
-
-                if (co_opcache != NULL) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
-
-                    if (co_opcache->optimized == 0) {
-                        /* Wasn't optimized before. */
-                        OPCACHE_STAT_GLOBAL_OPT();
-                    } else {
-                        OPCACHE_STAT_GLOBAL_MISS();
-                    }
-
-                    co_opcache->optimized = 1;
-                    lg->globals_ver =
-                        ((PyDictObject *)GLOBALS())->ma_version_tag;
-                    lg->builtins_ver =
-                        ((PyDictObject *)BUILTINS())->ma_version_tag;
-                    lg->ptr = v; /* borrowed */
-                }
-
                 Py_INCREF(v);
             }
             else {
                 /* Slow-path if globals or builtins is not a dict */
 
                 /* namespace 1: globals */
-                if (name == NULL) {
-                    name = _PyHydrate_LoadName(co->co_pyc, oparg);
-                    if (name == NULL) {
-                        goto error;
-                    }
-                }
-                name = GETITEM(names, oparg);
                 if (name == NULL) {
                     name = _PyHydrate_LoadName(co->co_pyc, oparg);
                     if (name == NULL) {
@@ -3191,6 +2977,61 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             DISPATCH();
         }
 
+        case TARGET(LOAD_GLOBAL_ADAPTIVE): {
+            SpecializedCacheEntry *cache = GET_CACHE();
+            if (cache->adaptive.counter == 0) {
+                PyObject *name = GETITEM(names, cache->adaptive.original_oparg);
+                next_instr--;
+                if (_Py_Specialize_LoadGlobal(GLOBALS(), BUILTINS(), next_instr, name, cache) < 0) {
+                    goto error;
+                }
+                DISPATCH();
+            }
+            else {
+                STAT_INC(LOAD_GLOBAL, deferred);
+                cache->adaptive.counter--;
+                oparg = cache->adaptive.original_oparg;
+                JUMP_TO_INSTRUCTION(LOAD_GLOBAL);
+            }
+        }
+
+        case TARGET(LOAD_GLOBAL_MODULE): {
+            DEOPT_IF(!PyDict_CheckExact(GLOBALS()), LOAD_GLOBAL);
+            PyDictObject *dict = (PyDictObject *)GLOBALS();
+            SpecializedCacheEntry *caches = GET_CACHE();
+            _PyAdaptiveEntry *cache0 = &caches[0].adaptive;
+            _PyLoadGlobalCache *cache1 = &caches[-1].load_global;
+            DEOPT_IF(dict->ma_keys->dk_version != cache1->module_keys_version, LOAD_GLOBAL);
+            PyDictKeyEntry *ep = DK_ENTRIES(dict->ma_keys) + cache0->index;
+            PyObject *res = ep->me_value;
+            DEOPT_IF(res == NULL, LOAD_GLOBAL);
+            record_cache_hit(cache0);
+            STAT_INC(LOAD_GLOBAL, hit);
+            Py_INCREF(res);
+            PUSH(res);
+            DISPATCH();
+        }
+
+        case TARGET(LOAD_GLOBAL_BUILTIN): {
+            DEOPT_IF(!PyDict_CheckExact(GLOBALS()), LOAD_GLOBAL);
+            DEOPT_IF(!PyDict_CheckExact(BUILTINS()), LOAD_GLOBAL);
+            PyDictObject *mdict = (PyDictObject *)GLOBALS();
+            PyDictObject *bdict = (PyDictObject *)BUILTINS();
+            SpecializedCacheEntry *caches = GET_CACHE();
+            _PyAdaptiveEntry *cache0 = &caches[0].adaptive;
+            _PyLoadGlobalCache *cache1 = &caches[-1].load_global;
+            DEOPT_IF(mdict->ma_keys->dk_version != cache1->module_keys_version, LOAD_GLOBAL);
+            DEOPT_IF(bdict->ma_keys->dk_version != cache1->builtin_keys_version, LOAD_GLOBAL);
+            PyDictKeyEntry *ep = DK_ENTRIES(bdict->ma_keys) + cache0->index;
+            PyObject *res = ep->me_value;
+            DEOPT_IF(res == NULL, LOAD_GLOBAL);
+            record_cache_hit(cache0);
+            STAT_INC(LOAD_GLOBAL, hit);
+            Py_INCREF(res);
+            PUSH(res);
+            DISPATCH();
+        }
+
         case TARGET(DELETE_FAST): {
             PyObject *v = GETLOCAL(oparg);
             if (v != NULL) {
@@ -3206,28 +3047,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_CELL): {
+            // "initial" is probably NULL but not if it's an arg (or set
+            // via PyFrame_LocalsToFast() before MAKE_CELL has run).
             PyObject *initial = GETLOCAL(oparg);
-            // Normally initial would be NULL.  However, it
-            // might have been set to an initial value during
-            // a call to PyFrame_LocalsToFast().
             PyObject *cell = PyCell_New(initial);
             if (cell == NULL) {
                 goto error;
-            }
-            /* If it is an arg then copy the arg into the cell. */
-            if (initial == NULL && co->co_cell2arg != NULL) {
-                int argoffset = co->co_cell2arg[oparg - co->co_nlocals];
-                if (argoffset != CO_CELL_NOT_AN_ARG) {
-                    PyObject *arg = GETLOCAL(argoffset);
-                    // It will have been set in initialize_locals() but
-                    // may have been deleted PyFrame_LocalsToFast().
-                    if (arg != NULL) {;
-                        Py_INCREF(arg);
-                        PyCell_SET(cell, arg);
-                        /* Clear the local copy. */
-                        SETLOCAL(argoffset, NULL);
-                    }
-                }
             }
             SETLOCAL(oparg, cell);
             DISPATCH();
@@ -3602,7 +3427,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 DISPATCH();
             }
             else {
-                STAT_INC(loadattr_deferred);
+                STAT_INC(LOAD_ATTR, deferred);
                 cache->adaptive.counter--;
                 oparg = cache->adaptive.original_oparg;
                 JUMP_TO_INSTRUCTION(LOAD_ATTR);
@@ -3625,9 +3450,8 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             DEOPT_IF(dict->ma_keys->dk_version != cache1->dk_version_or_hint, LOAD_ATTR);
             res = dict->ma_values[cache0->index];
             DEOPT_IF(res == NULL, LOAD_ATTR);
-            STAT_INC(loadattr_hit);
+            STAT_INC(LOAD_ATTR, hit);
             record_cache_hit(cache0);
-            STAT_INC(loadattr_hit);
             Py_INCREF(res);
             SET_TOP(res);
             Py_DECREF(owner);
@@ -3648,7 +3472,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             PyDictKeyEntry *ep = DK_ENTRIES(dict->ma_keys) + cache0->index;
             res = ep->me_value;
             DEOPT_IF(res == NULL, LOAD_ATTR);
-            STAT_INC(loadattr_hit);
+            STAT_INC(LOAD_ATTR, hit);
             record_cache_hit(cache0);
             Py_INCREF(res);
             SET_TOP(res);
@@ -3676,7 +3500,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             DEOPT_IF(ep->me_key != name, LOAD_ATTR);
             res = ep->me_value;
             DEOPT_IF(res == NULL, LOAD_ATTR);
-            STAT_INC(loadattr_hit);
+            STAT_INC(LOAD_ATTR, hit);
             record_cache_hit(cache0);
             Py_INCREF(res);
             SET_TOP(res);
@@ -3696,7 +3520,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             char *addr = (char *)owner + cache0->index;
             res = *(PyObject **)addr;
             DEOPT_IF(res == NULL, LOAD_ATTR);
-            STAT_INC(loadattr_hit);
+            STAT_INC(LOAD_ATTR, hit);
             record_cache_hit(cache0);
             Py_INCREF(res);
             SET_TOP(res);
@@ -4725,21 +4549,25 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
            or goto error. */
         Py_UNREACHABLE();
 
-/* Cache misses */
+/* Specialization misses */
 
-LOAD_ATTR_miss:
-    {
-        STAT_INC(loadattr_miss);
-        _PyAdaptiveEntry *cache = &GET_CACHE()->adaptive;
-        record_cache_miss(cache);
-        if (too_many_cache_misses(cache)) {
-            next_instr[-1] = _Py_MAKECODEUNIT(LOAD_ATTR_ADAPTIVE, _Py_OPARG(next_instr[-1]));
-            STAT_INC(loadattr_deopt);
-            cache_backoff(cache);
-        }
-        oparg = cache->original_oparg;
-        JUMP_TO_INSTRUCTION(LOAD_ATTR);
+#define MISS_WITH_CACHE(opname) \
+opname ## _miss: \
+    { \
+        STAT_INC(opname, miss); \
+        _PyAdaptiveEntry *cache = &GET_CACHE()->adaptive; \
+        record_cache_miss(cache); \
+        if (too_many_cache_misses(cache)) { \
+            next_instr[-1] = _Py_MAKECODEUNIT(opname ## _ADAPTIVE, _Py_OPARG(next_instr[-1])); \
+            STAT_INC(opname, deopt); \
+            cache_backoff(cache); \
+        } \
+        oparg = cache->original_oparg; \
+        JUMP_TO_INSTRUCTION(opname); \
     }
+
+MISS_WITH_CACHE(LOAD_ATTR)
+MISS_WITH_CACHE(LOAD_GLOBAL)
 
 error:
         /* Double-check exception status. */
@@ -5347,7 +5175,7 @@ initialize_locals(PyThreadState *tstate, PyFrameConstructor *con,
     for (i = 0; i < co->co_nfreevars; ++i) {
         PyObject *o = PyTuple_GET_ITEM(con->fc_closure, i);
         Py_INCREF(o);
-        localsplus[co->co_nlocals + co->co_ncellvars + i] = o;
+        localsplus[co->co_nlocals + co->co_nplaincellvars + i] = o;
     }
 
     return 0;
@@ -6676,7 +6504,7 @@ format_exc_unbound(PyThreadState *tstate, PyCodeObject *co, int oparg)
     if (_PyErr_Occurred(tstate))
         return;
     name = PyTuple_GET_ITEM(co->co_localsplusnames, oparg);
-    if (oparg < co->co_ncellvars + co->co_nlocals) {
+    if (oparg < co->co_nplaincellvars + co->co_nlocals) {
         format_exc_check_arg(tstate, PyExc_UnboundLocalError,
                              UNBOUNDLOCAL_ERROR_MSG, name);
     } else {

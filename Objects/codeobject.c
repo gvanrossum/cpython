@@ -165,43 +165,28 @@ _Py_set_localsplus_info(int offset, PyObject *name, _PyLocalsPlusKind kind,
     Py_INCREF(name);
     PyTuple_SET_ITEM(names, offset, name);
     kinds[offset] = kind;
-
-    if (kind == CO_FAST_CELL) {
-        // Cells can overlap with args, so mark those cases.
-        int nlocalsplus = (int)PyTuple_GET_SIZE(names);
-        for (int i = 0; i < nlocalsplus; i++) {
-            _PyLocalsPlusKind kind = kinds[i];
-            if (kind && !(kind & CO_FAST_LOCAL)) {
-                // We've moved past the locals.
-                break;
-            }
-            PyObject *varname = PyTuple_GET_ITEM(names, i);
-            int cmp = PyUnicode_Compare(name, varname);
-            if (cmp == 0) {
-                kinds[i] |= CO_FAST_CELL;
-                break;
-            }
-            assert(cmp > 0 || !PyErr_Occurred());
-        }
-    }
 }
 
 static void
 get_localsplus_counts(PyObject *names, _PyLocalsPlusKinds kinds,
-                      int *pnlocals, int *pncellvars,
+                      int *pnlocals, int *pnplaincellvars, int *pncellvars,
                       int *pnfreevars)
 {
     int nlocals = 0;
+    int nplaincellvars = 0;
     int ncellvars = 0;
     int nfreevars = 0;
-    int nlocalsplus = Py_SAFE_DOWNCAST(PyTuple_GET_SIZE(names),
-                                       Py_ssize_t, int);
+    Py_ssize_t nlocalsplus = PyTuple_GET_SIZE(names);
     for (int i = 0; i < nlocalsplus; i++) {
         if (kinds[i] & CO_FAST_LOCAL) {
             nlocals += 1;
+            if (kinds[i] & CO_FAST_CELL) {
+                ncellvars += 1;
+            }
         }
         else if (kinds[i] & CO_FAST_CELL) {
             ncellvars += 1;
+            nplaincellvars += 1;
         }
         else if (kinds[i] & CO_FAST_FREE) {
             nfreevars += 1;
@@ -209,6 +194,9 @@ get_localsplus_counts(PyObject *names, _PyLocalsPlusKinds kinds,
     }
     if (pnlocals != NULL) {
         *pnlocals = nlocals;
+    }
+    if (pnplaincellvars != NULL) {
+        *pnplaincellvars = nplaincellvars;
     }
     if (pncellvars != NULL) {
         *pncellvars = ncellvars;
@@ -228,10 +216,6 @@ get_localsplus_names(PyCodeObject *co, _PyLocalsPlusKind kind, int num)
     int index = 0;
     for (int offset = 0; offset < co->co_nlocalsplus; offset++) {
         if ((co->co_localspluskinds[offset] & kind) == 0) {
-            continue;
-        }
-        // For now there may be duplicates, which we ignore.
-        if (kind == CO_FAST_CELL && co->co_localspluskinds[offset] != kind) {
             continue;
         }
         assert(index < num);
@@ -286,7 +270,7 @@ _PyCode_Validate(struct _PyCodeConstructor *con)
      * here to avoid the possibility of overflow (however remote). */
     int nlocals;
     get_localsplus_counts(con->localsplusnames, con->localspluskinds,
-                          &nlocals, NULL, NULL);
+                          &nlocals, NULL, NULL, NULL);
     int nplainlocals = nlocals -
                        con->argcount -
                        con->kwonlyargcount -
@@ -306,12 +290,13 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     // TODO: Don't check for con->pyc, just check whether things are NULL
     if (con->pyc == NULL) {
         int nlocalsplus = (int)PyTuple_GET_SIZE(con->localsplusnames);
-        int nlocals, ncellvars, nfreevars;
+        int nlocals, nplaincellvars, ncellvars, nfreevars;
         get_localsplus_counts(con->localsplusnames, con->localspluskinds,
-                            &nlocals, &ncellvars, &nfreevars);
+                            &nlocals, &nplaincellvars, &ncellvars, &nfreevars);
         // derived values
         co->co_nlocalsplus = nlocalsplus;
         co->co_nlocals = nlocals;
+        co->co_nplaincellvars = nplaincellvars;
         co->co_ncellvars = ncellvars;
         co->co_nfreevars = nfreevars;
     }
@@ -319,6 +304,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
         // These will be set by hydration
         co->co_nlocalsplus = 0;
         co->co_nlocals = 0;
+        co->co_nplaincellvars = 0;
         co->co_ncellvars = 0;
         co->co_nfreevars = 0;
     }
@@ -375,7 +361,6 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     }
 
     /* derived values */
-    co->co_cell2arg = NULL;  // This will be set soon.
     co->co_varnames = NULL;
     co->co_cellvars = NULL;
     co->co_freevars = NULL;
@@ -383,10 +368,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     /* not set */
     co->co_weakreflist = NULL;
     co->co_extra = NULL;
-    co->co_opcache_map = NULL;
-    co->co_opcache = NULL;
-    co->co_opcache_flag = 0;
-    co->co_opcache_size = 0;
+
     co->co_warmup = QUICKENING_INITIAL_WARMUP_VALUE;
     co->co_quickened = NULL;
 }
@@ -433,44 +415,6 @@ _PyCode_New(struct _PyCodeConstructor *con)
         co->co_flags |= CO_NOFREE;
     } else {
         co->co_flags &= ~CO_NOFREE;
-    }
-
-    /* Create mapping between cells and arguments if needed. */
-    if (co->co_ncellvars && con->pyc == NULL) {
-        int totalargs = co->co_argcount +
-                        co->co_kwonlyargcount +
-                        ((co->co_flags & CO_VARARGS) != 0) +
-                        ((co->co_flags & CO_VARKEYWORDS) != 0);
-        assert(totalargs <= co->co_nlocals);
-        /* Find cells which are also arguments. */
-        for (int i = 0; i < co->co_ncellvars; i++) {
-            PyObject *cellname = PyTuple_GET_ITEM(co->co_localsplusnames,
-                                                  i + co->co_nlocals);
-            for (int j = 0; j < totalargs; j++) {
-                PyObject *argname = PyTuple_GET_ITEM(co->co_localsplusnames, j);
-                int cmp = PyUnicode_Compare(cellname, argname);
-                if (cmp == -1 && PyErr_Occurred()) {
-                    Py_DECREF(co);
-                    return NULL;
-                }
-                if (cmp == 0) {
-                    if (co->co_cell2arg == NULL) {
-                        co->co_cell2arg = PyMem_NEW(int, co->co_ncellvars);
-                        if (co->co_cell2arg == NULL) {
-                            Py_DECREF(co);
-                            PyErr_NoMemory();
-                            return NULL;
-                        }
-                        for (int k = 0; k < co->co_ncellvars; k++) {
-                            co->co_cell2arg[k] = CO_CELL_NOT_AN_ARG;
-                        }
-                    }
-                    co->co_cell2arg[i] = j;
-                    // Go to the next cell name.
-                    break;
-                }
-            }
-        }
     }
 
     return co;
@@ -521,6 +465,23 @@ PyCode_NewWithPosOnlyArgs(int argcount, int posonlyargcount, int kwonlyargcount,
     }
     for (int i = 0; i < ncellvars; i++, offset++) {
         PyObject *name = PyTuple_GET_ITEM(cellvars, i);
+        int argoffset = -1;
+        for (int j = 0; j < nvarnames; j++) {
+            int cmp = PyUnicode_Compare(PyTuple_GET_ITEM(varnames, j),
+                                        name);
+            assert(!PyErr_Occurred());
+            if (cmp == 0) {
+                argoffset = j;
+                break;
+            }
+        }
+        if (argoffset >= 0) {
+            // Merge the localsplus indices.
+            nlocalsplus -= 1;
+            offset -= 1;
+            localspluskinds[argoffset] |= CO_FAST_CELL;
+            continue;
+        }
         _Py_set_localsplus_info(offset, name, CO_FAST_CELL,
                                localsplusnames, localspluskinds);
     }
@@ -528,6 +489,11 @@ PyCode_NewWithPosOnlyArgs(int argcount, int posonlyargcount, int kwonlyargcount,
         PyObject *name = PyTuple_GET_ITEM(freevars, i);
         _Py_set_localsplus_info(offset, name, CO_FAST_FREE,
                                localsplusnames, localspluskinds);
+    }
+    // If any cells were args then nlocalsplus will have shrunk.
+    // We don't bother resizing localspluskinds.
+    if (_PyTuple_Resize(&localsplusnames, nlocalsplus) < 0) {
+        goto error;
     }
 
     struct _PyCodeConstructor con = {
@@ -667,7 +633,7 @@ PyCode_Addr2Line(PyCodeObject *co, int addrq)
 }
 
 void
-PyLineTable_InitAddressRange(char *linetable, Py_ssize_t length, int firstlineno, PyCodeAddressRange *range)
+PyLineTable_InitAddressRange(const char *linetable, Py_ssize_t length, int firstlineno, PyCodeAddressRange *range)
 {
     range->opaque.lo_next = linetable;
     range->opaque.limit = range->opaque.lo_next + length;
@@ -683,7 +649,7 @@ _PyCode_InitAddressRange(PyCodeObject* co, PyCodeAddressRange *bounds)
     if (co->co_linetable == NULL) {
         return -1;
     }
-    char *linetable = PyBytes_AS_STRING(co->co_linetable);
+    const char *linetable = PyBytes_AS_STRING(co->co_linetable);
     Py_ssize_t length = PyBytes_GET_SIZE(co->co_linetable);
     PyLineTable_InitAddressRange(linetable, length, co->co_firstlineno, bounds);
     return bounds->ar_line;
@@ -955,55 +921,6 @@ new_linesiterator(PyCodeObject *code)
     return li;
 }
 
-
-/******************
- * the opcache
- ******************/
-
-int
-_PyCode_InitOpcache(PyCodeObject *co)
-{
-    Py_ssize_t co_size = PyBytes_Size(co->co_code) / sizeof(_Py_CODEUNIT);
-    co->co_opcache_map = (unsigned char *)PyMem_Calloc(co_size, 1);
-    if (co->co_opcache_map == NULL) {
-        return -1;
-    }
-
-    _Py_CODEUNIT *opcodes = (_Py_CODEUNIT*)PyBytes_AS_STRING(co->co_code);
-    Py_ssize_t opts = 0;
-
-    for (Py_ssize_t i = 0; i < co_size;) {
-        unsigned char opcode = _Py_OPCODE(opcodes[i]);
-        i++;  // 'i' is now aligned to (next_instr - first_instr)
-
-        // TODO: LOAD_METHOD
-        if (opcode == LOAD_GLOBAL || opcode == LOAD_ATTR) {
-            opts++;
-            co->co_opcache_map[i] = (unsigned char)opts;
-            if (opts > 254) {
-                break;
-            }
-        }
-    }
-
-    if (opts) {
-        co->co_opcache = (_PyOpcache *)PyMem_Calloc(opts, sizeof(_PyOpcache));
-        if (co->co_opcache == NULL) {
-            PyMem_Free(co->co_opcache_map);
-            return -1;
-        }
-    }
-    else {
-        PyMem_Free(co->co_opcache_map);
-        co->co_opcache_map = NULL;
-        co->co_opcache = NULL;
-    }
-
-    co->co_opcache_size = (unsigned char)opts;
-    return 0;
-}
-
-
 /******************
  * "extra" frame eval info (see PEP 523)
  ******************/
@@ -1250,15 +1167,6 @@ code_new_impl(PyTypeObject *type, int argcount, int posonlyargcount,
 static void
 code_dealloc(PyCodeObject *co)
 {
-    if (co->co_opcache != NULL) {
-        PyMem_Free(co->co_opcache);
-    }
-    if (co->co_opcache_map != NULL) {
-        PyMem_Free(co->co_opcache_map);
-    }
-    co->co_opcache_flag = 0;
-    co->co_opcache_size = 0;
-
     if (co->co_extra != NULL) {
         PyInterpreterState *interp = _PyInterpreterState_GET();
         _PyCodeObjectExtra *co_extra = co->co_extra;
@@ -1286,8 +1194,6 @@ code_dealloc(PyCodeObject *co)
     Py_XDECREF(co->co_name);
     Py_XDECREF(co->co_linetable);
     Py_XDECREF(co->co_exceptiontable);
-    if (co->co_cell2arg != NULL)
-        PyMem_Free(co->co_cell2arg);
     if (co->co_weakreflist != NULL)
         PyObject_ClearWeakRefs((PyObject*)co);
     if (co->co_quickened) {
@@ -1485,16 +1391,11 @@ code_sizeof(PyCodeObject *co, PyObject *Py_UNUSED(args))
                (co_extra->ce_size-1) * sizeof(co_extra->ce_extras[0]);
     }
 
-    if (co->co_cell2arg != NULL && co->co_cellvars != NULL) {
-        res += co->co_ncellvars * sizeof(Py_ssize_t);
-    }
-
-    if (co->co_opcache != NULL) {
-        assert(co->co_opcache_map != NULL);
-        // co_opcache_map
-        res += PyBytes_GET_SIZE(co->co_code) / sizeof(_Py_CODEUNIT);
-        // co_opcache
-        res += co->co_opcache_size * sizeof(_PyOpcache);
+    if (co->co_quickened != NULL) {
+        Py_ssize_t count = co->co_quickened[0].entry.zero.cache_count;
+        count += (PyBytes_GET_SIZE(co->co_code)+sizeof(SpecializedCacheEntry)-1)/
+            sizeof(SpecializedCacheEntry);
+        res += count * sizeof(SpecializedCacheEntry);
     }
 
     return PyLong_FromSsize_t(res);

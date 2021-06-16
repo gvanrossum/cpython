@@ -83,11 +83,11 @@ struct PyCodeObject {
 
     /* These fields are set with computed values on new code objects. */
 
-    int *co_cell2arg;           /* Maps cell vars which are arguments. */
     // redundant values (derived from co_localsplusnames and co_localspluskinds)
     int co_nlocalsplus;         /* number of local + cell + free variables */
     int co_nlocals;             /* number of local variables */
-    int co_ncellvars;           /* number of cell variables */
+    int co_nplaincellvars;      /* number of non-arg cell variables */
+    int co_ncellvars;           /* total number of cell variables */
     int co_nfreevars;           /* number of free variables */
     // lazily-computed values
     PyObject *co_varnames;      /* tuple of strings (local variable names) */
@@ -105,21 +105,6 @@ struct PyCodeObject {
      This should be treated as opaque by all code except the specializer and
      interpreter. */
     union _cache_or_instruction *co_quickened;
-
-    /* Per opcodes just-in-time cache
-     *
-     * To reduce cache size, we use indirect mapping from opcode index to
-     * cache object:
-     *   cache = co_opcache[co_opcache_map[next_instr - first_instr] - 1]
-     */
-
-    // co_opcache_map is indexed by (next_instr - first_instr).
-    //  * 0 means there is no cache for this opcode.
-    //  * n > 0 means there is cache in co_opcache[n-1].
-    unsigned char *co_opcache_map;
-    _PyOpcache *co_opcache;
-    int co_opcache_flag;  // used to determine when create a cache.
-    unsigned char co_opcache_size;  // length of co_opcache.
 
     /* Hydration */
     struct lazy_pyc *co_pyc;  // Structure holding data read from PYC file
@@ -160,10 +145,6 @@ struct PyCodeObject {
 #define CO_FUTURE_GENERATOR_STOP  0x800000
 #define CO_FUTURE_ANNOTATIONS    0x1000000
 
-/* This value is found in the co_cell2arg array when the associated cell
-   variable does not correspond to an argument. */
-#define CO_CELL_NOT_AN_ARG (-1)
-
 /* This should be defined if a future statement modifies the syntax.
    For example, when a keyword is added.
 */
@@ -200,8 +181,8 @@ PyAPI_FUNC(int) PyCode_Addr2Line(PyCodeObject *, int);
 /* for internal use only */
 struct _opaque {
     int computed_line;
-    char *lo_next;
-    char *limit;
+    const char *lo_next;
+    const char *limit;
 };
 
 typedef struct _line_offsets {
@@ -238,7 +219,7 @@ PyAPI_FUNC(int) _PyCode_SetExtra(PyObject *code, Py_ssize_t index,
 int _PyCode_InitAddressRange(PyCodeObject* co, PyCodeAddressRange *bounds);
 
 /** Out of process API for initializing the line number table. */
-void PyLineTable_InitAddressRange(char *linetable, Py_ssize_t length, int firstlineno, PyCodeAddressRange *range);
+void PyLineTable_InitAddressRange(const char *linetable, Py_ssize_t length, int firstlineno, PyCodeAddressRange *range);
 
 /** API for traversing the line number table. */
 int PyLineTable_NextAddressRange(PyCodeAddressRange *range);
