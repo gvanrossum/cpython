@@ -6574,7 +6574,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
             PyObject *names = _PyFrame_GetCode(f)->co_names;
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(f->f_code->co_pyc, oparg);
+                name = _PyHydrate_LoadName(PyFrame_GetCode(f)->co_pyc, oparg);
                 if (name == NULL) {
                     Py_DECREF(v);
                     return NULL;
