@@ -1964,13 +1964,20 @@ _PyCode_Hydrate(PyCodeObject *code)
             }
             PyTuple_SetItem(code->co_localsplusnames, i, name);
         }
-        code->co_localspluskinds = PyObject_Calloc(n_localsplus, sizeof(char));
+        code->co_localspluskinds =
+            PyBytes_FromStringAndSize((char *)pointer, n_localsplus);
         if (code->co_localspluskinds == NULL) {
-            PyErr_NoMemory();
             return NULL;
         }
-        memcpy(code->co_localspluskinds, pointer, n_localsplus);
-        // TODO: Compute all the derived values
+        // Compute all the derived values
+        int nlocals, nplaincellvars, ncellvars, nfreevars;
+        get_localsplus_counts(code->co_localsplusnames, code->co_localspluskinds,
+                            &nlocals, &nplaincellvars, &ncellvars, &nfreevars);
+        code->co_nlocalsplus = n_localsplus;
+        code->co_nlocals = nlocals;
+        code->co_nplaincellvars = nplaincellvars;
+        code->co_ncellvars = ncellvars;
+        code->co_nfreevars = nfreevars;
     }
 
     if (pyc->consts == NULL) {

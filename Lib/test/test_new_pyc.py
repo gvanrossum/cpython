@@ -22,7 +22,7 @@ def compare(a, b):
 
 
 class TestNewPyc(unittest.TestCase):
-    def test_test_basic(self):
+    def test_basic(self):
         values = [
             0,
             2,

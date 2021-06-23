@@ -1607,15 +1607,15 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     f->f_stackdepth = -1;
     f->f_state = FRAME_EXECUTING;
 
-// #ifdef LLTRACE
-//     {
-//         int r = _PyDict_ContainsId(GLOBALS(), &PyId___ltrace__);
-//         if (r < 0) {
-//             goto exit_eval_frame;
-//         }
-//         lltrace = r;
-//     }
-// #endif
+#ifdef LLTRACE
+    {
+        int r = _PyDict_ContainsId(GLOBALS(), &PyId___ltrace__);
+        if (r < 0) {
+            goto exit_eval_frame;
+        }
+        lltrace = r;
+    }
+#endif
 
     if (throwflag) { /* support for generator.throw() */
         goto error;
