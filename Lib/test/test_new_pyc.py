@@ -73,6 +73,7 @@ class TestNewPyc(unittest.TestCase):
         dis.dis(f, depth=0)
         # breakpoint()
         assert f(1, 10) == 11
+        assert f(a=1, b=10) == 11
 
     def test_speed(self):
         body = "    a, b = b, a\n"*100
@@ -81,28 +82,33 @@ class TestNewPyc(unittest.TestCase):
             for num in range(100)
         ]
         source = "\n\n".join(functions)
+        print("Starting speed test")
 
         def helper(data, label):
             t0 = time.time()
             codes = []
-            for _ in range(1000):
+            for _ in range(5000):
                 code = marshal.loads(data)
                 codes.append(code)
             t1 = time.time()
             print(f"{label} load: {t1-t0:.3f}")
-            t0 = time.time()
+            t2 = time.time()
             for code in codes:
                 exec(code, {})
-            t1 = time.time()
-            print(f"{label} exec: {t1-t0:.3f}")
+            t3 = time.time()
+            print(f"{label} exec: {t3-t2:.3f}")
+            print(f"       {label} total: {t3-t0:.3f}")
+            return t3 - t0
 
         code = compile(source, "<old>", "exec")
         data = marshal.dumps(code)
-        helper(data, "Classic")
+        tc = helper(data, "Classic")
 
         data = pyco.serialize_source(source, "<new>")
         assert data.startswith(b"PYC.")
-        helper(data, "New PYC")
+        tn = helper(data, "New PYC")
+        if tc and tn:
+            print(f"Classic-to-new ratio: {tc/tn:.2f} (new is {100*(tc/tn-1):.0f}% faster)")
 
 
 if __name__ == "__main__":

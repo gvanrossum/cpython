@@ -1075,65 +1075,54 @@ PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
     return _PyEval_Vector(tstate, &desc, locals, NULL, 0, NULL);
 }
 
+/* Activation records for LAZY_LOAD_CONSTANT "mini-subroutines" */
 
-/* Constants in PYC files are lazily loaded.
- * For now, just construct a code object for these and eval it.
- * (This is slow, and may defeat the purpose -- but each constant
- * is only evaluated once, and the alternative would be a lot of code
- * for a prototype.)
- */
-static PyObject *
-call_constant(PyThreadState *tstate, PyCodeObject *code, int oparg, PyObject *globals)
+struct activation_record {
+    struct activation_record *prev_act_rec;
+    PyObject **prev_stack_bottom;
+    PyObject **prev_stack_pointer;
+    PyObject **prev_stack_top;
+    _Py_CODEUNIT *prev_first_instr;
+    _Py_CODEUNIT *prev_next_instr;
+    PyObject *stack[1];
+};
+
+static struct activation_record *
+new_activation_record(PyThreadState *tstate, int stacksize)
 {
-    struct lazy_pyc *pyc = code->co_pyc;
-    if (pyc == NULL) {
-        _PyErr_SetString(tstate, PyExc_SystemError,
-                         "call_constant from non-PYC code");
+    struct activation_record *new = (struct activation_record *)
+        _PyThreadState_PushLocals(tstate, sizeof(struct activation_record) + stacksize - 1);
+    if (new == NULL) {
+        PyErr_NoMemory();
         return NULL;
     }
-    PyObject *result = PyTuple_GetItem(pyc->consts, oparg);
-    if (result != NULL) {
-        Py_INCREF(result);
-        return result;
-    }
+    new->prev_act_rec = NULL;
+    new->prev_stack_bottom = NULL;
+    new->prev_stack_pointer = NULL;
+    new->prev_stack_top = NULL;
+    new->prev_first_instr = NULL;
+    new->prev_next_instr = NULL;
+    return new;
+}
+
+static void
+free_activation_record(PyThreadState *tstate, struct activation_record *rec)
+{
+    _PyThreadState_PopLocals(tstate, (PyObject **)rec);
+}
+
+static void
+get_subroutine_info(PyThreadState *tstate, PyCodeObject *code, int oparg,
+                    _Py_CODEUNIT **p_instrs, int *p_stacksize)
+{
+    struct lazy_pyc *pyc = code->co_pyc;
+    assert(pyc);
     uint32_t offset = pyc->const_offsets[oparg];
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;
-    PyObject *bytecode = PyBytes_FromStringAndSize((char *)pointer, 2*n_instrs);
-    if (bytecode == NULL) {
-        return NULL;
-    }
-    PyObject *name = PyUnicode_FromString("<dummy>");
-    if (name == NULL) {
-        Py_DECREF(name);
-        Py_DECREF(bytecode);
-        return NULL;
-    }
-    Py_INCREF(name);  // For filename, right?
-    struct _PyCodeConstructor con = {
-        .name = name,
-        .filename = name,
-        .stacksize = stacksize,
-        .pyc = pyc,
-        .consts = pyc->consts,
-        // TODO: Do we ever need names here? .names = pyc->names,
-    };
-    PyCodeObject *newcode = _PyCode_New(&con);
-    if (newcode == NULL) {
-        Py_DECREF(bytecode);
-        return NULL;
-    }
-    newcode->co_code = bytecode;
-    newcode->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(bytecode);
-    Py_INCREF(pyc->consts);
-    newcode->co_consts = pyc->consts;
-    Py_INCREF(pyc->names);
-    newcode->co_names = pyc->names;
-    // unsigned char *cp = pointer;
-    result = PyEval_EvalCode((PyObject *)newcode, globals, NULL);
-    Py_DECREF(newcode);  // TODO: DECREF(bytecode) or not?
-    return result;
+    *p_instrs = (_Py_CODEUNIT *)pointer;
+    *p_stacksize = stacksize;
 }
 
 
@@ -1399,8 +1388,8 @@ eval_frame_handle_pending(PyThreadState *tstate)
 
 /* The stack can grow at most MAXINT deep, as co_nlocals and
    co_stacksize are ints. */
-#define STACK_LEVEL()     ((int)(stack_pointer - f->f_valuestack))
-#define EMPTY()           (STACK_LEVEL() == 0)
+#define STACK_LEVEL()     ((int)(stack_pointer - stack_bottom))
+#define EMPTY()           (stack_bottom == stack_pointer)
 #define TOP()             (stack_pointer[-1])
 #define SECOND()          (stack_pointer[-2])
 #define THIRD()           (stack_pointer[-3])
@@ -1417,20 +1406,20 @@ eval_frame_handle_pending(PyThreadState *tstate)
 #ifdef LLTRACE
 #define PUSH(v)         { (void)(BASIC_PUSH(v), \
                           lltrace && prtrace(tstate, TOP(), "push")); \
-                          assert(STACK_LEVEL() <= co->co_stacksize); }
+                          assert(stack_pointer <= stack_top); }
 #define POP()           ((void)(lltrace && prtrace(tstate, TOP(), "pop")), \
                          BASIC_POP())
 #define STACK_GROW(n)   do { \
                           assert(n >= 0); \
                           (void)(BASIC_STACKADJ(n), \
                           lltrace && prtrace(tstate, TOP(), "stackadj")); \
-                          assert(STACK_LEVEL() <= co->co_stacksize); \
+                          assert(stack_pointer <= stack_top); \
                         } while (0)
 #define STACK_SHRINK(n) do { \
                             assert(n >= 0); \
                             (void)(lltrace && prtrace(tstate, TOP(), "stackadj")); \
                             (void)(BASIC_STACKADJ(-(n))); \
-                            assert(STACK_LEVEL() <= co->co_stacksize); \
+                            assert(stack_bottom <= stack_pointer); \
                         } while (0)
 #define EXT_POP(STACK_POINTER) ((void)(lltrace && \
                                 prtrace(tstate, (STACK_POINTER)[-1], "ext_pop")), \
@@ -1483,6 +1472,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     int lastopcode = 0;
 #endif
     PyObject **stack_pointer;  /* Next free slot in value stack */
+    PyObject **stack_bottom, **stack_top;  /* Extent of stack (DEBUG only) */
     _Py_CODEUNIT *next_instr;
     int opcode;        /* Current opcode */
     int oparg;         /* Current opcode argument, if any */
@@ -1518,6 +1508,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     tstate->frame = f;
     specials = f->f_valuestack - FRAME_SPECIALS_SIZE;
     co = (PyCodeObject *)specials[FRAME_SPECIALS_CODE_OFFSET];
+
+    /* subroutine activation records for LAZY_LOAD_CONSTANT */
+    struct activation_record *current_activation_record = NULL;
 
     if (cframe.use_tracing) {
         if (tstate->c_tracefunc != NULL) {
@@ -1597,7 +1590,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     */
     assert(f->f_lasti >= -1);
     next_instr = first_instr + f->f_lasti + 1;
-    stack_pointer = f->f_valuestack + f->f_stackdepth;
+    stack_bottom = f->f_valuestack;
+    stack_pointer = stack_bottom + f->f_stackdepth;
+    stack_top = stack_bottom + co->co_stacksize;
     /* Set f->f_stackdepth to -1.
      * Update when returning or calling trace function.
        Having f_stackdepth <= 0 ensures that invalid
@@ -4412,10 +4407,30 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(LAZY_LOAD_CONSTANT): {
             PyObject *value = GETITEM(consts, oparg);
             if (value == NULL) {
-                value = call_constant(tstate, co, oparg, GLOBALS());
-                if (value == NULL) {
+                _Py_CODEUNIT *instrs;
+                int stacksize;
+                get_subroutine_info(tstate, co, oparg, &instrs, &stacksize);
+
+                struct activation_record *rec =
+                    new_activation_record(tstate, stacksize);
+                if (rec == NULL) {
                     goto error;
                 }
+                rec->prev_act_rec = current_activation_record;
+                rec->prev_first_instr = first_instr;
+                rec->prev_next_instr = next_instr;
+                rec->prev_stack_bottom = stack_bottom;
+                rec->prev_stack_pointer = stack_pointer;
+                rec->prev_stack_top = stack_top;
+
+                stack_bottom = &rec->stack[0];
+                stack_pointer = stack_bottom;
+                stack_top = stack_bottom + stacksize;
+                first_instr = instrs;
+                next_instr = instrs;
+
+                current_activation_record = rec;
+                DISPATCH();
             }
             PUSH(value);
             DISPATCH();
@@ -4524,13 +4539,27 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(RETURN_CONSTANT): {
-            retval = POP();
-            Py_INCREF(retval);
-            PyTuple_SET_ITEM(co->co_pyc->consts, oparg, retval);
+            PyObject *value = POP();
+            PyObject *shared = PyTuple_GET_ITEM(co->co_pyc->consts, oparg);
+            if (shared == NULL) {
+                PyTuple_SET_ITEM(co->co_pyc->consts, oparg, value);
+            }
+            else {
+                Py_DECREF(value);
+                value = shared;
+            }
+            Py_INCREF(value);
             assert(EMPTY());
-            f->f_state = FRAME_RETURNED;
-            f->f_stackdepth = 0;
-            goto exiting;
+            struct activation_record *rec = current_activation_record;
+            assert(rec != NULL);
+            first_instr = rec->prev_first_instr;
+            next_instr = rec->prev_next_instr;
+            stack_bottom = rec->prev_stack_bottom;
+            stack_pointer = rec->prev_stack_pointer;
+            stack_top = rec->prev_stack_top;
+            free_activation_record(tstate, rec);
+            PUSH(value);
+            DISPATCH();
         }
 
 
