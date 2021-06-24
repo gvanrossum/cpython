@@ -401,7 +401,7 @@ _PyCode_IsHydrated(PyCodeObject *code)
 PyObject *_PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index);
 PyCodeObject *_PyCode_Hydrate(PyCodeObject *code);
 
-uint64_t_PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset);
+uint64_t PyHydra_UInt64FromOffset(struct lazy_pyc *pyc, uint32_t *p_offset);
 PyObject *_PyHydra_LongFromOffset(struct lazy_pyc *pyc, uint32_t index);
 PyObject *_PyHydra_LongFromIndex(struct lazy_pyc *pyc, uint32_t index);
 PyObject * _PyHydra_FloatFromOffset(struct lazy_pyc *pyc, uint32_t offset);
