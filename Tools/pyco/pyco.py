@@ -505,18 +505,22 @@ class Builder:
         )
         binary_data = bytearray()
 
-        def helper(what: list[BytesProducer]) -> bytearray:
+        def helper(what: list[BytesProducer], name: str) -> bytearray:
             nonlocal binary_data
             offsets = bytearray()
             for i, thing in enumerate(what):
                 offsets += struct.pack("<L", binary_section_start + len(binary_data))
                 binary_data += thing.get_bytes()
+                # if len(binary_data) % 4 != 0:
+                #     print(f"Pad from {len(binary_data)} to {(len(binary_data)+4)//4 * 4} for {name}")
+                while len(binary_data) % 4 != 0:
+                    binary_data.append(0)  # Pad
             return offsets
 
-        code_offsets = helper(self.codeobjs)
-        const_offsets = helper(self.constants)
-        string_offsets = helper(self.strings)
-        blob_offsets = helper(self.blobs)
+        code_offsets = helper(self.codeobjs, "code")
+        const_offsets = helper(self.constants, "consts")
+        string_offsets = helper(self.strings, "strings")
+        blob_offsets = helper(self.blobs, "blobs")
         binary_section_size = len(binary_data)
         prefix_size = (
             16
