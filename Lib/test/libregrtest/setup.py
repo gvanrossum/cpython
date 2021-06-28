@@ -75,11 +75,11 @@ def setup_tests(ns):
 
     support.use_resources = ns.use_resources
 
-    if hasattr(sys, 'addaudithook'):
-        # Add an auditing hook for all tests to ensure PySys_Audit is tested
-        def _test_audit_hook(name, args):
-            pass
-        sys.addaudithook(_test_audit_hook)
+    # if hasattr(sys, 'addaudithook'):
+    #     # Add an auditing hook for all tests to ensure PySys_Audit is tested
+    #     def _test_audit_hook(name, args):
+    #         pass
+    #     sys.addaudithook(_test_audit_hook)
 
     setup_unraisable_hook()
     setup_threading_excepthook()
