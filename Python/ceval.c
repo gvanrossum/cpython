@@ -1081,7 +1081,9 @@ struct activation_record {
     struct activation_record *prev_act_rec;
     PyObject **prev_stack_bottom;
     PyObject **prev_stack_pointer;
+#ifdef LLTRACE
     PyObject **prev_stack_top;
+#endif
     _Py_CODEUNIT *prev_first_instr;
     _Py_CODEUNIT *prev_next_instr;
     PyObject *stack[1];
@@ -1099,7 +1101,9 @@ new_activation_record(PyThreadState *tstate, int stacksize)
     new->prev_act_rec = NULL;
     new->prev_stack_bottom = NULL;
     new->prev_stack_pointer = NULL;
+#ifdef LLTRACE
     new->prev_stack_top = NULL;
+#endif
     new->prev_first_instr = NULL;
     new->prev_next_instr = NULL;
     return new;
@@ -1472,7 +1476,10 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     int lastopcode = 0;
 #endif
     PyObject **stack_pointer;  /* Next free slot in value stack */
-    PyObject **stack_bottom, **stack_top;  /* Extent of stack (DEBUG only) */
+    PyObject **stack_bottom;
+#ifdef LLTRACE
+    PyObject **stack_top;
+#endif
     _Py_CODEUNIT *next_instr;
     int opcode;        /* Current opcode */
     int oparg;         /* Current opcode argument, if any */
@@ -1592,7 +1599,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
     next_instr = first_instr + f->f_lasti + 1;
     stack_bottom = f->f_valuestack;
     stack_pointer = stack_bottom + f->f_stackdepth;
+#ifdef LLTRACE
     stack_top = stack_bottom + co->co_stacksize;
+#endif
     /* Set f->f_stackdepth to -1.
      * Update when returning or calling trace function.
        Having f_stackdepth <= 0 ensures that invalid
@@ -4421,11 +4430,15 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 rec->prev_next_instr = next_instr;
                 rec->prev_stack_bottom = stack_bottom;
                 rec->prev_stack_pointer = stack_pointer;
+#ifdef LLTRACE
                 rec->prev_stack_top = stack_top;
+#endif
 
                 stack_bottom = &rec->stack[0];
                 stack_pointer = stack_bottom;
+#ifdef LLTRACE
                 stack_top = stack_bottom + stacksize;
+#endif
                 first_instr = instrs;
                 next_instr = instrs;
 
@@ -4556,7 +4569,9 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             next_instr = rec->prev_next_instr;
             stack_bottom = rec->prev_stack_bottom;
             stack_pointer = rec->prev_stack_pointer;
+#ifdef LLTRACE
             stack_top = rec->prev_stack_top;
+#endif
             free_activation_record(tstate, rec);
             PUSH(value);
             DISPATCH();
