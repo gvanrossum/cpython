@@ -86,7 +86,7 @@ class TestNewPyc(unittest.TestCase):
         def helper(data, label):
             t0 = time.time()
             codes = []
-            for _ in range(5000):
+            for _ in range(20000):
                 code = marshal.loads(data)
                 codes.append(code)
             t1 = time.time()
