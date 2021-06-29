@@ -84,21 +84,21 @@ class TestNewPyc(unittest.TestCase):
         print("Starting speed test")
 
         def helper(data, label):
-            t0 = time.time()
+            t0 = time.perf_counter()
             codes = []
             for _ in range(20000):
                 code = marshal.loads(data)
                 codes.append(code)
-            t1 = time.time()
+            t1 = time.perf_counter()
             print(f"{label} load: {t1-t0:.3f}")
-            t2 = time.time()
+            t2 = time.perf_counter()
             for code in codes:
                 exec(code, {})
-            t3 = time.time()
+            t3 = time.perf_counter()
             print(f"{label} first exec: {t3-t2:.3f}")
             for code in codes:
                 exec(code, {})
-            t4 = time.time()
+            t4 = time.perf_counter()
             print(f"{label} second exec: {t4-t3:.3f}")
             print(f"       {label} total: {t4-t0:.3f}")
             return t3 - t0
