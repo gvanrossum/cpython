@@ -77,14 +77,9 @@ class TestNewPyc(unittest.TestCase):
 
     def do_test_speed(self, body, test_name, call=False):
         functions = [
-            f"def f{num}(a, b):\n{body}"
+            f"def f(a, b):\n{body}%s" % (f"\nf(0,0)\n" if call else "")
             for num in range(100)
         ]
-        if call:
-            functions.extend([
-                f"\nf{num}({num}, {num+1})\n"
-                for num in range(100)]
-            )
         source = "\n\n".join(functions)
         print(f"Starting {test_name} speed test")
 
