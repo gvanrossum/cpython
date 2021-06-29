@@ -4416,6 +4416,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(LAZY_LOAD_CONSTANT): {
             PyObject *value = GETITEM(consts, oparg);
             if (value != NULL) {
+                Py_INCREF(value);
                 PUSH(value);
                 DISPATCH();
             }
