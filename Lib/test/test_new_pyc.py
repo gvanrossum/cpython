@@ -132,7 +132,7 @@ class TestNewPyc(unittest.TestCase):
         body = ["    a0, b0 = 1, 1"]
         for i in range(100):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
-        self.do_test_speed('\n'.join(body), "many_locals", call=True)
+        self.do_test_speed('\n'.join(body), "many_locals_with_call", call=True)
 
 if __name__ == "__main__":
     unittest.main()
