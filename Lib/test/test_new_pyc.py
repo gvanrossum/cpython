@@ -75,13 +75,13 @@ class TestNewPyc(unittest.TestCase):
         assert f(1, 10) == 11
         assert f(a=1, b=10) == 11
 
-    def do_test_speed(self, body):
+    def do_test_speed(self, body, test_name):
         functions = [
             f"def f{num}(a, b):\n{body}"
             for num in range(100)
         ]
         source = "\n\n".join(functions)
-        print("Starting speed test")
+        print(f"Starting {test_name} speed test")
 
         def helper(data, label):
             t0 = time.perf_counter()
@@ -115,13 +115,13 @@ class TestNewPyc(unittest.TestCase):
 
     def test_speed_few_locals(self):
         body = "    a, b = b, a\n"*100
-        self.do_test_speed(body)
+        self.do_test_speed(body, "few_locals")
 
     def test_speed_many_locals(self):
         body = ["    a0, b0 = 1, 1"]
         for i in range(100):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
-        self.do_test_speed('\n'.join(body))
+        self.do_test_speed('\n'.join(body), "many_locals")
 
 if __name__ == "__main__":
     unittest.main()
