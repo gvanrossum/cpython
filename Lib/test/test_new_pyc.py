@@ -75,8 +75,7 @@ class TestNewPyc(unittest.TestCase):
         assert f(1, 10) == 11
         assert f(a=1, b=10) == 11
 
-    def test_speed(self):
-        body = "    a, b = b, a\n"*100
+    def do_test_speed(self, body):
         functions = [
             f"def f{num}(a, b):\n{body}"
             for num in range(100)
@@ -96,10 +95,10 @@ class TestNewPyc(unittest.TestCase):
             for code in codes:
                 exec(code, {})
             t3 = time.time()
+            print(f"{label} first exec: {t3-t2:.3f}")
             for code in codes:
                 exec(code, {})
             t4 = time.time()
-            print(f"{label} first exec: {t3-t2:.3f}")
             print(f"{label} second exec: {t4-t3:.3f}")
             print(f"       {label} total: {t4-t0:.3f}")
             return t3 - t0
@@ -114,6 +113,15 @@ class TestNewPyc(unittest.TestCase):
         if tc and tn:
             print(f"Classic-to-new ratio: {tc/tn:.2f} (new is {100*(tc/tn-1):.0f}% faster)")
 
+    def test_speed_few_locals(self):
+        body = "    a, b = b, a\n"*100
+        self.do_test_speed(body)
+
+    def test_speed_many_locals(self):
+        body = ["    a0, b0 = 1, 1"]
+        for i in range(100):
+            body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
+        self.do_test_speed('\n'.join(body))
 
 if __name__ == "__main__":
     unittest.main()
