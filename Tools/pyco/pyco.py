@@ -45,6 +45,7 @@ BUILD_TUPLE = dis.opmap["BUILD_TUPLE"]
 BUILD_SET = dis.opmap["BUILD_SET"]
 EXTENDED_ARG = dis.opmap["EXTENDED_ARG"]
 LOAD_CONST = dis.opmap["LOAD_CONST"]
+MAKE_CODE_OBJECT = dis.opmap["MAKE_CODE_OBJECT"]
 
 
 def encode_varint(i: int) -> bytes:
@@ -216,12 +217,14 @@ class ComplexConstant:
         return self.data
 
 
-def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
+def rewritten_bytecode(code: types.CodeType, builder: Builder,
+                       index: Optional[int]) -> bytes:
     """Rewrite some instructions.
     - Replace LOAD_CONST i with LAZY_LOAD_CONSTANT j.
     - For ops whose argument is a name, replace oparg with
       corresponding string index.
     """
+    assert index is not None
     instrs = code.co_code
     new = bytearray()
     for i in range(0, len(instrs), 2):
@@ -255,6 +258,18 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                         case _:
                             # This code and is_immediate() are out of sync
                             assert False, f"{value} is not an immediately loadable constant"
+            elif type(value) == types.CodeType and index == 0:
+                # TODO: The second condition should really allow this in either
+                # - a toplevel module
+                # - a toplevel class
+                # - a class nested in a toplevel class (but not in a function)
+                # but never when surrounded by any kind of loop.
+                opcode = MAKE_CODE_OBJECT
+                oparg = index
+                if oparg >= 256:
+                    raise RuntimeError(
+                        f"More than 256 code objects in {code.co_name} at line {code.co_firstlineno}"
+                    )
             else:
                 opcode = LAZY_LOAD_CONSTANT
                 oparg = builder.add_constant(code.co_consts[oparg])
@@ -310,6 +325,7 @@ class CodeObject:
     def __init__(self, code: types.CodeType, builder: Builder):
         self.value = code
         self.builder = builder
+        self.index = None  # Filled in later by caller
 
     def preload(self):
         """Compute indexes that need to be patched into existing code.
@@ -375,7 +391,7 @@ class CodeObject:
         result += prefix
 
         codearray = bytearray()
-        new_bytecode = rewritten_bytecode(code, self.builder)
+        new_bytecode = rewritten_bytecode(code, self.builder, self.index)
         n_instrs = len(new_bytecode) // 2
         if n_instrs & 1:  # Pad code to multiple of 4
             new_bytecode += b"\0\0"
@@ -481,7 +497,9 @@ class Builder:
 
     def add_code(self, code: types.CodeType) -> int:
         co = CodeObject(code, self)
-        return self.add(self.codeobjs, co)
+        index = self.add(self.codeobjs, co)
+        self.codeobjs[index].index = index
+        return index
 
     def preload_code_objects(self):
         for co in self.codeobjs:
