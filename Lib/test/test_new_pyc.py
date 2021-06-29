@@ -96,8 +96,12 @@ class TestNewPyc(unittest.TestCase):
             for code in codes:
                 exec(code, {})
             t3 = time.time()
-            print(f"{label} exec: {t3-t2:.3f}")
-            print(f"       {label} total: {t3-t0:.3f}")
+            for code in codes:
+                exec(code, {})
+            t4 = time.time()
+            print(f"{label} first exec: {t3-t2:.3f}")
+            print(f"{label} second exec: {t4-t3:.3f}")
+            print(f"       {label} total: {t4-t0:.3f}")
             return t3 - t0
 
         code = compile(source, "<old>", "exec")
