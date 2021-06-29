@@ -4415,37 +4415,37 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(LAZY_LOAD_CONSTANT): {
             PyObject *value = GETITEM(consts, oparg);
-            if (value == NULL) {
-                _Py_CODEUNIT *instrs;
-                int stacksize;
-                get_subroutine_info(tstate, co, oparg, &instrs, &stacksize);
-
-                struct activation_record *rec =
-                    new_activation_record(tstate, stacksize);
-                if (rec == NULL) {
-                    goto error;
-                }
-                rec->prev_act_rec = current_activation_record;
-                rec->prev_first_instr = first_instr;
-                rec->prev_next_instr = next_instr;
-                rec->prev_stack_bottom = stack_bottom;
-                rec->prev_stack_pointer = stack_pointer;
-#ifdef LLTRACE
-                rec->prev_stack_top = stack_top;
-#endif
-
-                stack_bottom = &rec->stack[0];
-                stack_pointer = stack_bottom;
-#ifdef LLTRACE
-                stack_top = stack_bottom + stacksize;
-#endif
-                first_instr = instrs;
-                next_instr = instrs;
-
-                current_activation_record = rec;
+            if (value != NULL) {
+                PUSH(value);
                 DISPATCH();
             }
-            PUSH(value);
+            _Py_CODEUNIT *instrs;
+            int stacksize;
+            get_subroutine_info(tstate, co, oparg, &instrs, &stacksize);
+
+            struct activation_record *rec =
+                new_activation_record(tstate, stacksize);
+            if (rec == NULL) {
+                goto error;
+            }
+            rec->prev_act_rec = current_activation_record;
+            rec->prev_first_instr = first_instr;
+            rec->prev_next_instr = next_instr;
+            rec->prev_stack_bottom = stack_bottom;
+            rec->prev_stack_pointer = stack_pointer;
+#ifdef LLTRACE
+            rec->prev_stack_top = stack_top;
+#endif
+
+            stack_bottom = &rec->stack[0];
+            stack_pointer = stack_bottom;
+#ifdef LLTRACE
+            stack_top = stack_bottom + stacksize;
+#endif
+            first_instr = instrs;
+            next_instr = instrs;
+
+            current_activation_record = rec;
             DISPATCH();
         }
 
