@@ -99,7 +99,15 @@ class TestNewPyc(unittest.TestCase):
                 exec(code, {})
             t4 = time.perf_counter()
             print(f"{label} second exec: {t4-t3:.3f}")
-            print(f"       {label} total: {t4-t0:.3f}")
+            for code in codes:
+                exec(code, {})
+            t5 = time.perf_counter()
+            print(f"{label} third exec: {t5-t4:.3f}")
+            for code in codes:
+                exec(code, {})
+            t6 = time.perf_counter()
+            print(f"{label} fourth exec: {t6-t5:.3f}")
+            print(f"       {label} total: {t6-t0:.3f}")
             return t3 - t0
 
         code = compile(source, "<old>", "exec")
