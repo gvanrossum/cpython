@@ -62,7 +62,6 @@ class TestNewPyc(unittest.TestCase):
 
     def test_function(self):
         source = "def f(a, b):\n    print(a, b)\n    return a + b\n"
-        source += "f(0, 0)\n"
         builder = pyco.build_source(source)
         pyco.report(builder)
         data = pyco.serialize_source(source)
@@ -72,7 +71,6 @@ class TestNewPyc(unittest.TestCase):
         f = ns["f"]
         print("Disassembly of", f)
         dis.dis(f, depth=0)
-        # breakpoint()
         assert f(1, 10) == 11
         assert f(a=1, b=10) == 11
 

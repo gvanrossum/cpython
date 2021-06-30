@@ -1548,8 +1548,29 @@ static PyObject *
 code_getattr(PyObject *self, PyObject *attr)
 {
     PyCodeObject *code = (PyCodeObject *)self;
-    if (_PyCode_Hydrate(code) == NULL) {
-        return NULL;
+    if (code->co_pyc) {
+        // Ensure code object is hydrated
+        if (!_PyCode_IsHydrated(code)) {
+            if (_PyCode_Hydrate(code) == NULL) {
+                return NULL;
+            }
+        }
+        // Fully hydrate co_names
+        PyObject *names = code->co_names;
+        if (names != NULL && !Py_IsNone(names)) {
+            assert(PyTuple_CheckExact(names));
+            int n = PyTuple_GET_SIZE(names);
+            for (int i = 0; i < n; i++) {
+                PyObject *name = PyTuple_GET_ITEM(names, i);
+                if (name == NULL) {
+                    if (_PyHydrate_LoadName(code->co_pyc, i) == NULL) {
+                        return NULL;
+                    }
+                    assert(PyTuple_GET_ITEM(names, i) != NULL);
+                }
+            }
+        }
+        // TODO: Fully hydrate co_consts
     }
     return PyObject_GenericGetAttr(self, attr);
 }

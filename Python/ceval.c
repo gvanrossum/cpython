@@ -5294,7 +5294,7 @@ _PyEval_Vector(PyThreadState *tstate, PyFrameConstructor *con,
     PyCodeObject *code = (PyCodeObject *)con->fc_code;
     if(!_PyCode_IsHydrated(code)) {
         // Needed to set co_nlocalsplus
-        if (!_PyCode_Hydrate(code)) {
+        if (_PyCode_Hydrate(code) == NULL) {
             return NULL;
         }
     }
