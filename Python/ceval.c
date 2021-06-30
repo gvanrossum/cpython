@@ -1613,6 +1613,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
 #ifdef LLTRACE
     {
+        assert(PyDict_Check(GLOBALS()));  // Trips on unhydrated code object
         int r = _PyDict_ContainsId(GLOBALS(), &PyId___ltrace__);
         if (r < 0) {
             goto exit_eval_frame;
@@ -5291,6 +5292,12 @@ _PyEval_Vector(PyThreadState *tstate, PyFrameConstructor *con,
 {
     PyObject **localsarray;
     PyCodeObject *code = (PyCodeObject *)con->fc_code;
+    if(!_PyCode_IsHydrated(code)) {
+        // Needed to set co_nlocalsplus
+        if (!_PyCode_Hydrate(code)) {
+            return NULL;
+        }
+    }
     int is_coro = code->co_flags &
         (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR);
     if (is_coro) {

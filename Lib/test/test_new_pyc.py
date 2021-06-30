@@ -61,7 +61,8 @@ class TestNewPyc(unittest.TestCase):
         print("Done")
 
     def test_function(self):
-        source = "def f(a, b):\n    return a + b"
+        source = "def f(a, b):\n    print(a, b)\n    return a + b\n"
+        source += "f(0, 0)\n"
         builder = pyco.build_source(source)
         pyco.report(builder)
         data = pyco.serialize_source(source)

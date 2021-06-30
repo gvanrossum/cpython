@@ -872,6 +872,7 @@ _PyFrame_New_NoTrack(PyThreadState *tstate, PyFrameConstructor *con, PyObject *l
     assert(con->fc_globals != NULL);
     assert(con->fc_builtins != NULL);
     assert(con->fc_code != NULL);
+    assert(_PyCode_IsHydrated(con->fc_code));
     assert(locals == NULL || PyMapping_Check(locals));
     PyCodeObject *code = (PyCodeObject *)con->fc_code;
 
