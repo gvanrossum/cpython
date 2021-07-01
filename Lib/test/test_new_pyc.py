@@ -81,7 +81,7 @@ class TestNewPyc(unittest.TestCase):
         ]
         if call:
             functions.extend([
-                f"\nf{num}({num}, {num+1})\n"
+                f"\nf{num}(0, 0)\n"
                 for num in range(100)]
             )
         source = "\n\n".join(functions)
@@ -90,7 +90,7 @@ class TestNewPyc(unittest.TestCase):
         def helper(data, label):
             t0 = time.perf_counter()
             codes = []
-            for _ in range(20000):
+            for _ in range(1000):
                 code = marshal.loads(data)
                 codes.append(code)
             t1 = time.perf_counter()
@@ -128,6 +128,10 @@ class TestNewPyc(unittest.TestCase):
     def test_speed_few_locals(self):
         body = "    a, b = b, a\n"*100
         self.do_test_speed(body, "few_locals")
+
+    def test_speed_few_locals_with_call(self):
+        body = "    a, b = b, a\n"*100
+        self.do_test_speed(body, "few_locals_with_call", call=True)
 
     def test_speed_many_locals(self):
         body = ["    a0, b0 = 1, 1"]
