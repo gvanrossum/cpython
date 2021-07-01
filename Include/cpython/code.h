@@ -106,6 +106,8 @@ struct PyCodeObject {
     /* Hydration */
     struct lazy_pyc *co_pyc;  // Structure holding data read from PYC file
     int co_pyc_index;  // Index of *this* object in the list of code objects
+    int co_strings_start;
+    int co_strings_size;
 };
 
 /* Masks for co_flags above */

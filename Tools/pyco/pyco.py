@@ -356,10 +356,13 @@ class CodeObject:
             if docstring is not None:
                 docindex = self.builder.add_string(docstring)
 
+
+        new_bytecode = rewritten_bytecode(code, self.builder)
+
         result = bytearray()
 
         prefix = struct.pack(
-            "<11L",
+            "<13L",
             code.co_argcount,
             code.co_posonlyargcount,
             code.co_kwonlyargcount,
@@ -371,15 +374,17 @@ class CodeObject:
             docindex,
             ltindex,
             etindex,
+            0, #co_strings_start,
+            0, #co_strings_size,
         )
+
         result += prefix
 
-        codearray = bytearray()
-        new_bytecode = rewritten_bytecode(code, self.builder)
         n_instrs = len(new_bytecode) // 2
         if n_instrs & 1:  # Pad code to multiple of 4
             new_bytecode += b"\0\0"
         assert len(new_bytecode) & 3 == 0, len(result)
+        codearray = bytearray()
         codearray += struct.pack("<L", n_instrs)
         codearray += new_bytecode
         result += codearray
