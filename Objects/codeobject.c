@@ -1961,17 +1961,7 @@ _PyCode_Hydrate(PyCodeObject *code)
     pointer += (code_size + 1) / 2;
     assert(((Py_ssize_t)pointer & 3) == 0);
     uint32_t n_names = *pointer++;
-    code->co_names = PyTuple_New(n_names);
-    if (code->co_names == NULL) {
-        return NULL;
-    }
-    for (uint32_t i = 0; i < n_names; i++) {
-        PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
-        if (name == NULL) {
-            return NULL;
-        }
-        PyTuple_SetItem(code->co_names, i, name);
-    }
+    pointer += n_names;  // Names are hydrated on demand
     uint32_t n_localsplus = *pointer++;
     code->co_localsplusnames = PyTuple_New(n_localsplus);
     if (code->co_localsplusnames == NULL) {
