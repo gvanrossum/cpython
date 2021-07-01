@@ -242,6 +242,8 @@ struct _PyCodeConstructor {
     /* For dehydrated code objects */
     struct lazy_pyc *pyc;
     uint32_t pyc_index;
+    uint32_t co_strings_start;
+    uint32_t co_strings_size;
 };
 
 // Using an "arguments struct" like this is helpful for maintainability

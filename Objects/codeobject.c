@@ -348,6 +348,8 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     }
     co->co_pyc = con->pyc;
     co->co_pyc_index = con->pyc_index;
+    co->co_strings_start = con->co_strings_start;
+    co->co_strings_size = con->co_strings_size;
 
     co->co_argcount = con->argcount;
     co->co_posonlyargcount = con->posonlyargcount;
@@ -1864,7 +1866,14 @@ PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
     if (0 <= index && index < pyc->n_strings) {
-        return _PyHydra_UnicodeFromOffset(pyc, pyc->string_offsets[index]);
+        uint32_t offset = pyc->string_offsets[index];
+        if (offset & 1) {
+            assert(0); // this should not be active yet
+            index = offset >> 1;
+            assert(0 <= index && index < pyc->n_strings);
+            offset = pyc->string_offsets[index];
+        }
+        return _PyHydra_UnicodeFromOffset(pyc, offset);
     }
     PyErr_Format(PyExc_SystemError, "String index %d out of range", index);
     return NULL;
@@ -1873,7 +1882,12 @@ _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 PyObject *
 _PyHydrate_LoadName(struct lazy_pyc *pyc, uint32_t index)
 {
-    PyObject *name = _PyHydra_UnicodeFromIndex(pyc, index);
+    PyObject *name = PyTuple_GET_ITEM(pyc->names, index);
+    if (name != NULL) {
+        Py_INCREF(name);
+        return name;
+    }
+    name = _PyHydra_UnicodeFromIndex(pyc, index);
     if (name == NULL) {
         return NULL;
     }
@@ -1894,6 +1908,8 @@ struct code_template {
     uint32_t docstring;  // String index
     uint32_t linetable;  // Bytes index
     uint32_t exceptiontable;  // Bytes index
+    uint32_t co_strings_start;
+    uint32_t co_strings_size;
 };
 
 PyObject *
@@ -1913,6 +1929,9 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
         .firstlineno = template->firstlineno,
         .pyc = pyc,
         .pyc_index = index,
+        .co_strings_start = template->co_strings_start,
+        .co_strings_size = template->co_strings_size,
+
         // The following members will be updated during hydration:
         // docstring, locationtable, exceptiontable,
         // code, names, localsplusnames, localspluskinds,
@@ -2010,8 +2029,26 @@ _PyCode_Hydrate(PyCodeObject *code)
             return NULL;
         }
     }
-    Py_INCREF(pyc->names);
-    code->co_names = pyc->names;  // The items may still be NULL!!!
+
+    if (code->co_strings_start) {
+        assert(0); // this should not be active yet
+        // Why can't we just do:
+        // code->co_names = pyc->names + code->co_strings_start
+        // ?
+        if (code->co_strings_size) {
+            code->co_names = PyTuple_New(code->co_strings_size);
+            if (code->co_names == NULL) {
+                return NULL;
+            }
+        }
+        else {
+            code->co_names = NULL;
+        }
+    }
+    else {
+        Py_INCREF(pyc->names);
+        code->co_names = pyc->names;  // The items may still be NULL!!!
+    }
 
     // Mark hydrated
     code->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(code->co_code);
