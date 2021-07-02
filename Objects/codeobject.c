@@ -1569,8 +1569,10 @@ code_getattr(PyObject *self, PyObject *attr)
                     if (name == NULL) {
                         return NULL;
                     }
-                    if (PyTuple_SetItem(names, i, name) == -1) {
-                        return NULL;
+                    if (PyTuple_GET_ITEM(names, i) == NULL) {
+                        if (PyTuple_SetItem(names, i, name) == -1) {
+                            return NULL;
+                        }
                     }
                 }
             }
