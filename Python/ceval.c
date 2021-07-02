@@ -2683,7 +2683,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(STORE_NAME): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -2710,7 +2710,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(DELETE_NAME): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -2781,7 +2781,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(STORE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -2801,7 +2801,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(DELETE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -2818,7 +2818,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(STORE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -2835,7 +2835,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(DELETE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -3409,7 +3409,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             STAT_INC(LOAD_ATTR, unquickened);
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -3630,7 +3630,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(IMPORT_NAME): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -3673,7 +3673,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(IMPORT_FROM): {
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -4104,7 +4104,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             /* Designed to work in tandem with CALL_METHOD. */
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
                 if (name == NULL) {
                     goto error;
                 }
@@ -6628,7 +6628,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
             PyObject *names = _PyFrame_GetCode(f)->co_names;
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(PyFrame_GetCode(f)->co_pyc, oparg);
+                name = _PyHydrate_LoadName(PyFrame_GetCode(f)->co_pyc, PyFrame_GetCode(f)->co_strings_start + oparg);
                 if (name == NULL) {
                     Py_DECREF(v);
                     return NULL;
