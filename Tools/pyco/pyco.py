@@ -277,7 +277,6 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                     raise RuntimeError(
                         f"More than 256 names in original {code.co_name} at line {code.co_firstlineno}"
                     )
-                oparg = builder.add_string(code.co_names[oparg])
                 if oparg >= 256:
                     raise RuntimeError(
                         f"More than 256 names in {code.co_name} at line {code.co_firstlineno}"
@@ -480,7 +479,7 @@ class Builder:
         where.append(thing)
         return index
 
-    def add_redirect(self, where: list[T], target):
+    def add_redirect(self, where: list[T], target: int):
         for index in range(self.co_strings_start, len(where)):
             # Do we have one for this co?
             it = self.strings[index]
