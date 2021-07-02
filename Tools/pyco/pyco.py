@@ -112,6 +112,13 @@ class Bytes:
 
 BlobConstant = LongInt | Float | Bytes
 
+class Redirect:
+    def __init__(self, target: int):
+        self.value = id(self)  # should not be equal to anything else
+        self.target = target
+
+    def get_bytes(self) -> bytes:
+        raise ValueError('should not be called')
 
 class String:
     def __init__(self, value: str):
@@ -310,12 +317,12 @@ class CodeObject:
     def __init__(self, code: types.CodeType, builder: Builder):
         self.value = code
         self.builder = builder
+        self.co_strings_start = 0
+        self.co_strings_size = 0
 
     def preload(self):
         """Compute indexes that need to be patched into existing code.
 
-        - Compute constant indexes for toplevel non-immediate non-code constants
-        - Compute string indexes for co_varnames, co_freevars, co_cellvars
         """
         code = self.value
         if is_function_code(code):
@@ -325,14 +332,25 @@ class CodeObject:
         for value in consts:
             if not is_immediate(value):
                 self.builder.add_constant(value)
+
+        USE_REDIRECTION = True
+        if USE_REDIRECTION:
+            self.co_strings_start = len(self.builder.strings)
+            self.builder.co_strings_start = self.co_strings_start
         for name in code.co_names:
             self.builder.add_string(name)
+        if USE_REDIRECTION:
+            self.co_strings_size = len(code.co_names)
+            self.builder.co_strings_start = -1
+            assert len(self.builder.strings) - self.co_strings_start == self.co_strings_size
 
     def finish(self):
         """Compute indexes for additional values.
 
         These do not need to be patched into existing code so the index values
 
+        - Compute constant indexes for toplevel non-immediate non-code constants
+        - Compute string indexes for co_varnames, co_freevars, co_cellvars
         """
         code = self.value
         self.builder.add_string(code.co_name)
@@ -347,6 +365,7 @@ class CodeObject:
             self.builder.add_string(name)
 
     def get_bytes(self) -> bytes:
+        assert self.builder.locked
         code = self.value
         ltindex = self.builder.add_bytes(code.co_linetable)
         etindex = self.builder.add_bytes(code.co_exceptiontable)
@@ -374,8 +393,8 @@ class CodeObject:
             docindex,
             ltindex,
             etindex,
-            0, #co_strings_start,
-            0, #co_strings_size,
+            self.co_strings_start,
+            self.co_strings_size,
         )
 
         result += prefix
@@ -439,10 +458,12 @@ T = TypeVar("T", bound=HasValue)
 class Builder:
     def __init__(self):
         self.codeobjs: list[CodeObject] = []
-        self.strings: list[String] = []
+        self.strings: list[String | Redirect] = []
         self.blobs: list[BlobConstant] = []
         self.constants: list[ComplexConstant] = []
         self.locked = False
+
+        self.co_strings_start = -1
 
     def lock(self):
         self.locked = True
@@ -459,11 +480,22 @@ class Builder:
         where.append(thing)
         return index
 
+    def add_redirect(self, where: list[T], target):
+        for index in range(self.co_strings_start, len(where)):
+            # Do we have one for this co?
+            it = self.strings[index]
+            if isinstance(it, Redirect) and it.target == target:
+                return index
+        return self.add(where, Redirect(target))
+
     def add_bytes(self, value: bytes) -> int:
         return self.add(self.blobs, Bytes(value))
 
     def add_string(self, value: str) -> int:
-        return self.add(self.strings, String(value))
+        index = self.add(self.strings, String(value))
+        if index < self.co_strings_start:
+            return self.add_redirect(self.strings, index)
+        return index
 
     def add_long(self, value: int) -> int:
         return self.add(self.blobs, LongInt(value))
@@ -514,12 +546,16 @@ class Builder:
             nonlocal binary_data
             offsets = bytearray()
             for i, thing in enumerate(what):
-                offsets += struct.pack("<L", binary_section_start + len(binary_data))
-                binary_data += thing.get_bytes()
-                # if len(binary_data) % 4 != 0:
-                #     print(f"Pad from {len(binary_data)} to {(len(binary_data)+4)//4 * 4} for {name}")
-                while len(binary_data) % 4 != 0:
-                    binary_data.append(0)  # Pad
+                if isinstance(thing, Redirect):
+                    offset = (thing.target << 1) | 1
+                else:
+                    offset = binary_section_start + len(binary_data)
+                    binary_data += thing.get_bytes()
+                    # if len(binary_data) % 4 != 0:
+                    #     print(f"Pad from {len(binary_data)} to {(len(binary_data)+4)//4 * 4} for {name}")
+                    while len(binary_data) % 4 != 0:
+                        binary_data.append(0)  # Pad
+                offsets += struct.pack("<L", offset)
             return offsets
 
         code_offsets = helper(self.codeobjs, "code")
@@ -632,6 +668,8 @@ def report(builder: Builder):
 
     print(f"String table -- {len(builder.strings)} items:")
     for i, string in enumerate(builder.strings):
+        if isinstance(string, Redirect):
+            continue
         b = string.get_bytes()
         nb, pos = decode_varint(b)
         head = b.hex(" ")
