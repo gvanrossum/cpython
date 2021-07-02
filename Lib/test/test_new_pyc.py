@@ -75,14 +75,15 @@ class TestNewPyc(unittest.TestCase):
         assert f(a=1, b=10) == 11
 
     def do_test_speed(self, body, test_name, call=False):
+        NUM_FUNCS = 100
         functions = [
             f"def f{num}(a, b):\n{body}"
-            for num in range(100)
+            for num in range(NUM_FUNCS)
         ]
         if call:
             functions.extend([
                 f"\nf{num}(0, 0)\n"
-                for num in range(100)]
+                for num in range(NUM_FUNCS)]
             )
         source = "\n\n".join(functions)
         print(f"Starting {test_name} speed test")

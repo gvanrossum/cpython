@@ -1565,10 +1565,13 @@ code_getattr(PyObject *self, PyObject *attr)
             for (int i = 0; i < n; i++) {
                 PyObject *name = PyTuple_GET_ITEM(names, i);
                 if (name == NULL) {
-                    if (_PyHydrate_LoadName(code->co_pyc, i) == NULL) {
+                    name = _PyHydrate_LoadName(code->co_pyc, code->co_strings_start+i);
+                    if (name == NULL) {
                         return NULL;
                     }
-                    assert(PyTuple_GET_ITEM(names, i) != NULL);
+                    if (PyTuple_SetItem(names, i, name) == -1) {
+                        return NULL;
+                    }
                 }
             }
         }

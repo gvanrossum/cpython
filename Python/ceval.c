@@ -2859,11 +2859,8 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 if (name == NULL) {
                     goto error;
                 }
-                if (co->co_strings_size) {
-                    assert(0); // this should not be active yet
-                    Py_INCREF(name);
-                    PyTuple_SET_ITEM(names, oparg, name);
-                }
+                Py_INCREF(name);
+                PyTuple_SET_ITEM(names, oparg, name);
             }
             PyObject *locals = LOCALS();
             PyObject *v;
