@@ -2929,7 +2929,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             STAT_INC(LOAD_GLOBAL, unquickened);
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start+oparg);
                 if (name == NULL) {
                     goto error;
                 }
