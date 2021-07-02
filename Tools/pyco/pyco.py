@@ -114,7 +114,7 @@ BlobConstant = LongInt | Float | Bytes
 
 class Redirect:
     def __init__(self, target: int):
-        self.value = id(self)  # should not be equal to anything else
+        self.value = (type(self), id(self))  # should not be equal to anything else
         self.target = target
 
     def get_bytes(self) -> bytes:
