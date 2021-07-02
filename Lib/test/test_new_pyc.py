@@ -95,9 +95,6 @@ class TestNewPyc(unittest.TestCase):
                 codes.append(code)
             t1 = time.perf_counter()
             print(f"{label} load: {t1-t0:.3f}")
-            t2 = time.perf_counter()
-            for code in codes:
-                exec(code, {})
             for i in range(4):
                 t3 = time.perf_counter()
                 for code in codes:
@@ -105,7 +102,7 @@ class TestNewPyc(unittest.TestCase):
                 t4 = time.perf_counter()
                 print(f"{label} exec #{i+1}: {t4-t3:.3f}")
             print(f"       {label} total: {t4-t0:.3f}")
-            return t3 - t0
+            return t4 - t0
 
         code = compile(source, "<old>", "exec")
         data = marshal.dumps(code)
