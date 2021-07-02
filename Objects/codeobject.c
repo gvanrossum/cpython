@@ -1865,15 +1865,21 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
+    //fprintf(stderr, "   >>>>    _PyHydra_UnicodeFromIndex index = %d pyc->n_strings=%d\n", index, pyc->n_strings);
     if (0 <= index && index < pyc->n_strings) {
         uint32_t offset = pyc->string_offsets[index];
+        //fprintf(stderr, "[1]         offset = %d\n", offset);
         if (offset & 1) {
-            assert(0); // this should not be active yet
             index = offset >> 1;
             assert(0 <= index && index < pyc->n_strings);
             offset = pyc->string_offsets[index];
+            // fprintf(stderr, "[2]         offset = %d\n", offset);
         }
-        return _PyHydra_UnicodeFromOffset(pyc, offset);
+        PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
+        //PyObject *repr = PyObject_Repr(res);
+        //fprintf(stderr, "res = %s\n", PyUnicode_AsUTF8(repr));
+        //Py_XDECREF(repr);
+        return res;
     }
     PyErr_Format(PyExc_SystemError, "String index %d out of range", index);
     return NULL;
@@ -2031,10 +2037,6 @@ _PyCode_Hydrate(PyCodeObject *code)
     }
 
     if (code->co_strings_start) {
-        assert(0); // this should not be active yet
-        // Why can't we just do:
-        // code->co_names = pyc->names + code->co_strings_start
-        // ?
         if (code->co_strings_size) {
             code->co_names = PyTuple_New(code->co_strings_size);
             if (code->co_names == NULL) {
