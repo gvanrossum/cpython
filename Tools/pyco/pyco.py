@@ -33,8 +33,9 @@ import struct
 import sys
 import types
 
+from collections import OrderedDict
 from inspect import CO_OPTIMIZED, CO_NEWLOCALS
-from typing import Iterator, Protocol, TypeVar
+from typing import Iterator, Protocol, TypeVar, Mapping, Tuple
 
 from updis import *  # Update dis with extra opcodes
 
@@ -129,6 +130,15 @@ class String:
         b = self.value.encode("utf-8", errors="surrogatepass")
         # Encode number of bytes, not code points or characters
         return encode_varint(len(b)) + b
+
+    def __eq__(self, other):
+        this = self.value
+        that = other.value
+        return type(this) == type(that) and this == that
+
+    def __hash__(self):
+        this = self.value
+        return hash((type(this), this))
 
 
 class ComplexConstant:
@@ -441,7 +451,7 @@ T = TypeVar("T", bound=HasValue)
 class Builder:
     def __init__(self):
         self.codeobjs: list[CodeObject] = []
-        self.strings: list[String | Redirect] = []
+        self.strings: Mapping[String | Redirect, Tuple(int, int|list[int])] = OrderedDict()
         self.blobs: list[BlobConstant] = []
         self.constants: list[ComplexConstant] = []
         self.locked = False
@@ -451,33 +461,53 @@ class Builder:
     def lock(self):
         self.locked = True
 
-    def add(self, where: list[T], thing: T) -> int:
+    def add(self, where: list[T|Redirect], thing: T|Redirect) -> int:
         # TODO: Avoid O(N**2) lookup behavior
         # Look for a match
-        for index, it in enumerate(where):
-            if type(it.value) is type(thing.value) and it.value == thing.value:
+        if isinstance(where, Mapping):
+            if thing in where:
+                index, _ = where[thing]
                 return index
+        else:
+            for index, it in enumerate(where):
+                if type(it.value) is type(thing.value) and it.value == thing.value:
+                    return index
         # Append a new one
         index = len(where)
         assert not self.locked
-        where.append(thing)
+        if isinstance(where, Mapping):
+            where[thing] =(index, [])
+        else:
+            where.append(thing)
         return index
 
-    def add_redirect(self, where: list[T], target: int):
-        for index in range(self.co_strings_start, len(where)):
-            # Do we have one for this co?
-            it = where[index]
-            if isinstance(it, Redirect) and it.target == target:
-                return index
-        return self.add(where, Redirect(target))
+    def add_redirect(self, where: list[T], thing: T, target: int):
+        if isinstance(where, Mapping):
+            thing_index, data = where[thing]
+            assert thing_index == target
+            if data and data[-1] >= self.co_strings_start:
+                # we already have a redirect for Thing in this co
+                # I'm not sure this can actually happen (co_names are unique, right?)
+                return thing_index
+            index = self.add(where, Redirect(target))
+            assert isinstance(data, list)
+            data.append(index)
+        else:
+            for index in range(self.co_strings_start, len(where)):
+                # Do we have one for this co?
+                it = where[index]
+                if isinstance(it, Redirect) and it.target == target:
+                    return index
+            return self.add(where, Redirect(target))
 
     def add_bytes(self, value: bytes) -> int:
         return self.add(self.blobs, Bytes(value))
 
     def add_string(self, value: str) -> int:
-        index = self.add(self.strings, String(value))
+        thing = String(value)
+        index = self.add(self.strings, thing)
         if index < self.co_strings_start:
-            return self.add_redirect(self.strings, index)
+            return self.add_redirect(self.strings, thing, index)
         return index
 
     def add_long(self, value: int) -> int:
