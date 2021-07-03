@@ -127,7 +127,7 @@ class TestNewPyc(unittest.TestCase):
 
     def test_speed_many_locals(self):
         body = ["    a0, b0 = 1, 1"]
-        for i in range(100):
+        for i in range(300):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
         self.do_test_speed('\n'.join(body), "many_locals")
 
@@ -142,9 +142,9 @@ class TestNewPyc(unittest.TestCase):
         GLOBALS_PER_FUNC = 100
         source = []
         for f_index in range(NUM_FUNCS):
-            source.append(f"def f{f_index}():")
             for g_index in range(GLOBALS_PER_FUNC):
-                source.append(f"    global a_{f_index}_{g_index}")
+                source.append(f"a_{f_index}_{g_index} = 1")
+            source.append(f"def f{f_index}():")
             source.append(f"    return 0+\\")
             for g_index in range(GLOBALS_PER_FUNC):
                 source.append(f"        a_{f_index}_{g_index}+\\")
