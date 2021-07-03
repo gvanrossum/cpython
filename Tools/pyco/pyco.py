@@ -466,7 +466,7 @@ class Builder:
     def add_redirect(self, where: list[T], target: int):
         for index in range(self.co_strings_start, len(where)):
             # Do we have one for this co?
-            it = self.strings[index]
+            it = where[index]
             if isinstance(it, Redirect) and it.target == target:
                 return index
         return self.add(where, Redirect(target))
