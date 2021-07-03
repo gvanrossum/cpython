@@ -332,16 +332,13 @@ class CodeObject:
             if not is_immediate(value):
                 self.builder.add_constant(value)
 
-        USE_REDIRECTION = True
-        if USE_REDIRECTION:
-            self.co_strings_start = len(self.builder.strings)
-            self.builder.co_strings_start = self.co_strings_start
+        self.co_strings_start = len(self.builder.strings)
+        self.builder.co_strings_start = self.co_strings_start
         for name in code.co_names:
             self.builder.add_string(name)
-        if USE_REDIRECTION:
-            self.co_strings_size = len(code.co_names)
-            self.builder.co_strings_start = -1
-            assert len(self.builder.strings) - self.co_strings_start == self.co_strings_size
+        self.co_strings_size = len(code.co_names)
+        self.builder.co_strings_start = -1
+        assert len(self.builder.strings) - self.co_strings_start == self.co_strings_size
 
     def finish(self):
         """Compute indexes for additional values.
