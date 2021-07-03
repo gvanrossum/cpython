@@ -1878,6 +1878,7 @@ _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
             index = offset >> 1;
             assert(0 <= index && index < pyc->n_strings);
             offset = pyc->string_offsets[index];
+            assert(!(offset & 1));
             // fprintf(stderr, "[2]         offset = %d\n", offset);
         }
         PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
