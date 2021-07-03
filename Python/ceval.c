@@ -1458,6 +1458,16 @@ eval_frame_handle_pending(PyThreadState *tstate)
 
 #define DEOPT_IF(cond, instname) if (cond) { goto instname ## _miss; }
 
+#define ENSURE_HYDRATED_NAME(name, names, oparg, co) \
+    if (name == NULL) { \
+        name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg); \
+        if (name == NULL) { \
+            goto error; \
+        } \
+        Py_INCREF(name); \
+        PyTuple_SET_ITEM(names, oparg, name); \
+    }
+
 #define GLOBALS() specials[FRAME_SPECIALS_GLOBALS_OFFSET]
 #define BUILTINS() specials[FRAME_SPECIALS_BUILTINS_OFFSET]
 #define LOCALS() specials[FRAME_SPECIALS_LOCALS_OFFSET]
@@ -2682,12 +2692,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(STORE_NAME): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *v = POP();
             PyObject *ns = LOCALS();
             int err;
@@ -2709,12 +2714,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(DELETE_NAME): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *ns = LOCALS();
             int err;
             if (ns == NULL) {
@@ -2780,12 +2780,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(STORE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *owner = TOP();
             PyObject *v = SECOND();
             int err;
@@ -2800,12 +2795,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(DELETE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *owner = POP();
             int err;
             err = PyObject_SetAttr(owner, name, (PyObject *)NULL);
@@ -2817,12 +2807,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(STORE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *v = POP();
             int err;
             err = PyDict_SetItem(GLOBALS(), name, v);
@@ -2834,12 +2819,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(DELETE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             int err;
             err = PyDict_DelItem(GLOBALS(), name);
             if (err != 0) {
@@ -2854,14 +2834,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(LOAD_NAME): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-                Py_INCREF(name);
-                PyTuple_SET_ITEM(names, oparg, name);
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *locals = LOCALS();
             PyObject *v;
             if (locals == NULL) {
@@ -2928,12 +2901,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             PREDICTED(LOAD_GLOBAL);
             STAT_INC(LOAD_GLOBAL, unquickened);
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start+oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *v;
             if (PyDict_CheckExact(GLOBALS())
                 && PyDict_CheckExact(BUILTINS()))
@@ -3408,12 +3376,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             PREDICTED(LOAD_ATTR);
             STAT_INC(LOAD_ATTR, unquickened);
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *owner = TOP();
             PyObject *res = PyObject_GetAttr(owner, name);
             if (res == NULL) {
@@ -3629,12 +3592,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(IMPORT_NAME): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *fromlist = POP();
             PyObject *level = TOP();
             PyObject *res;
@@ -3672,12 +3630,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
         case TARGET(IMPORT_FROM): {
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *from = TOP();
             PyObject *res;
             res = import_from(tstate, from, name);
@@ -4103,12 +4056,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         case TARGET(LOAD_METHOD): {
             /* Designed to work in tandem with CALL_METHOD. */
             PyObject *name = GETITEM(names, oparg);
-            if (name == NULL) {
-                name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg);
-                if (name == NULL) {
-                    goto error;
-                }
-            }
+            ENSURE_HYDRATED_NAME(name, names, oparg, co);
             PyObject *obj = TOP();
             PyObject *meth = NULL;
 
