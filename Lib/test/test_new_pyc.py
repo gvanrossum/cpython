@@ -86,8 +86,10 @@ class TestNewPyc(unittest.TestCase):
                 for num in range(NUM_FUNCS)]
             )
         source = "\n\n".join(functions)
-        print(f"Starting {test_name} speed test")
+        self.do_test_speed_for_source(source, test_name)
 
+    def do_test_speed_for_source(self, source, test_name):
+        print(f"Starting {test_name} speed test")
         def helper(data, label):
             t0 = time.perf_counter()
             codes = []
@@ -134,6 +136,20 @@ class TestNewPyc(unittest.TestCase):
         for i in range(100):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
         self.do_test_speed('\n'.join(body), "many_locals_with_call", call=True)
+
+    def test_speed_many_globals(self):
+        NUM_FUNCS = 100
+        GLOBALS_PER_FUNC = 100
+        source = []
+        for f_index in range(NUM_FUNCS):
+            source.append(f"def f{f_index}():")
+            for g_index in range(GLOBALS_PER_FUNC):
+                source.append(f"    global a_{f_index}_{g_index}")
+            source.append(f"    return 0+\\")
+            for g_index in range(GLOBALS_PER_FUNC):
+                source.append(f"        a_{f_index}_{g_index}+\\")
+            source.append(f"        0")
+        self.do_test_speed_for_source('\n'.join(source), "many_globals")
 
 if __name__ == "__main__":
     unittest.main()
