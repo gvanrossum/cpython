@@ -111,7 +111,10 @@ class TestNewPyc(unittest.TestCase):
         data = marshal.dumps(code)
         tc = helper(data, "Classic")
 
+        t0 = time.perf_counter()
         data = pyco.serialize_source(source, "<new>")
+        t1 = time.perf_counter()
+        print(f"PYCO: {t1-t0:.3f}")
         assert data.startswith(b"PYC.")
         tn = helper(data, "New PYC")
         if tc and tn:
