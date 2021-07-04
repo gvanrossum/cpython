@@ -451,7 +451,7 @@ T = TypeVar("T", bound=HasValue)
 class Builder:
     def __init__(self):
         self.codeobjs: list[CodeObject] = []
-        self.strings: Mapping[String | Redirect, Tuple(int, int|list[int])] = OrderedDict()
+        self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
         self.blobs: list[BlobConstant] = []
         self.constants: list[ComplexConstant] = []
         self.locked = False
@@ -476,22 +476,22 @@ class Builder:
         index = len(where)
         assert not self.locked
         if isinstance(where, Mapping):
-            where[thing] =(index, [])
+            where[thing] = (index, index)
         else:
             where.append(thing)
         return index
 
     def add_redirect(self, where: list[T], thing: T, target: int):
         if isinstance(where, Mapping):
-            thing_index, data = where[thing]
+            thing_index, redirect_index = where[thing]
             assert thing_index == target
-            if data and data[-1] >= self.co_strings_start:
+            if redirect_index >= self.co_strings_start:
                 # we already have a redirect for Thing in this co
                 # I'm not sure this can actually happen (co_names are unique, right?)
                 return thing_index
             index = self.add(where, Redirect(target))
-            assert isinstance(data, list)
-            data.append(index)
+            where[thing] = (thing_index, index)
+            return index
         else:
             for index in range(self.co_strings_start, len(where)):
                 # Do we have one for this co?
