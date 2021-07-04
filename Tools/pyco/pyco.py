@@ -121,16 +121,7 @@ class Redirect:
     def get_bytes(self) -> bytes:
         raise ValueError('should not be called')
 
-class String:
-    def __init__(self, value: str):
-        assert value is not None
-        self.value = value
-
-    def get_bytes(self) -> bytes:
-        b = self.value.encode("utf-8", errors="surrogatepass")
-        # Encode number of bytes, not code points or characters
-        return encode_varint(len(b)) + b
-
+class Thing:
     def __eq__(self, other):
         this = self.value
         that = other.value
@@ -139,6 +130,17 @@ class String:
     def __hash__(self):
         this = self.value
         return hash((type(this), this))
+
+
+class String(Thing):
+    def __init__(self, value: str):
+        assert value is not None
+        self.value = value
+
+    def get_bytes(self) -> bytes:
+        b = self.value.encode("utf-8", errors="surrogatepass")
+        # Encode number of bytes, not code points or characters
+        return encode_varint(len(b)) + b
 
 
 class ComplexConstant:
@@ -452,6 +454,7 @@ class Builder:
     def __init__(self):
         self.codeobjs: list[CodeObject] = []
         self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
+        # self.strings: list[String | Redirect] = []
         self.blobs: list[BlobConstant] = []
         self.constants: list[ComplexConstant] = []
         self.locked = False
