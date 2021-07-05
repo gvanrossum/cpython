@@ -125,7 +125,7 @@ class Thing:
     def __eq__(self, other):
         this = self.value
         that = other.value
-        return type(this) == type(that) and this == that
+        return (type(self), type(this), this) == (type(other), type(that), that)
 
     def __hash__(self):
         this = self.value
@@ -247,6 +247,9 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
         opcode, oparg = instrs[i : i + 2]
         if opcode == LOAD_CONST:
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
+                raise RuntimeError(
+                    f"More than 256 constants in original {code.co_name} at line {code.co_firstlineno}"
+                )
                 oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
             if is_immediate(value):
