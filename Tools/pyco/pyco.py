@@ -89,13 +89,14 @@ def decode_varint(data: bytes) -> tuple[int, int]:
 
 class Thing:
     def __eq__(self, other):
-        this = self.value
-        that = other.value
-        return (type(self), type(this), this) == (type(other), type(that), that)
+        return self.key() == other.key()
 
     def __hash__(self):
+        return hash(self.key())
+
+    def key(self):
         this = self.value
-        return hash((type(this), this))
+        return (type(self), type(this), this)
 
 
 class LongInt(Thing):
@@ -247,6 +248,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
     for i in range(0, len(instrs), 2):
         opcode, oparg = instrs[i : i + 2]
         if opcode == LOAD_CONST:
+            # TODO: Handle EXTENDED_ARG
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
                 raise RuntimeError(
                     f"More than 256 constants in original {code.co_name} at line {code.co_firstlineno}"
@@ -500,7 +502,7 @@ class Builder:
             if redirect_index >= self.co_strings_start:
                 # we already have a redirect for Thing in this co
                 # I'm not sure this can actually happen (co_names are unique, right?)
-                return thing_index
+                return redirect_index
             index = self.add(where, Redirect(target))
             where[thing][1] = index
             return index
