@@ -458,17 +458,10 @@ T = TypeVar("T", bound=HasValue)
 
 class Builder:
     def __init__(self):
-        SLOW_VERSION = False
-        if SLOW_VERSION:
-            self.codeobjs: list[CodeObject] = []
-            self.strings: list[String | Redirect] = []
-            self.blobs: list[BlobConstant] = []
-            self.constants: list[ComplexConstant] = []
-        else:
-            self.codeobjs: Mapping[CodeObject | Redirect, Tuple(int, int)] = OrderedDict()
-            self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
-            self.blobs: Mapping[BlobConstant | Redirect, Tuple(int, int)] = OrderedDict()
-            self.constants: Mapping[ComplexConstant | Redirect, Tuple(int, int)] = OrderedDict()
+        self.codeobjs: Mapping[CodeObject | Redirect, Tuple(int, int)] = OrderedDict()
+        self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
+        self.blobs: Mapping[BlobConstant | Redirect, Tuple(int, int)] = OrderedDict()
+        self.constants: Mapping[ComplexConstant | Redirect, Tuple(int, int)] = OrderedDict()
         self.locked = False
         self.co_strings_start = -1
 
@@ -476,43 +469,27 @@ class Builder:
         self.locked = True
 
     def add(self, where: list[T|Redirect], thing: T|Redirect) -> int:
-        # TODO: Avoid O(N**2) lookup behavior
         # Look for a match
-        if isinstance(where, Mapping):
-            if thing in where:
-                index, _ = where[thing]
-                return index
-        else:
-            for index, it in enumerate(where):
-                if type(it.value) is type(thing.value) and it.value == thing.value:
-                    return index
+        if thing in where:
+            index, _ = where[thing]
+            return index
         # Append a new one
         index = len(where)
         assert not self.locked
-        if isinstance(where, Mapping):
-            where[thing] = [index, index]
-        else:
-            where.append(thing)
+        where[thing] = [index, index]
         return index
 
     def add_redirect(self, where: list[T], thing: T, target: int):
-        if isinstance(where, Mapping):
-            thing_index, redirect_index = where[thing]
-            assert thing_index == target
-            if redirect_index >= self.co_strings_start:
-                # we already have a redirect for Thing in this co
-                # I'm not sure this can actually happen (co_names are unique, right?)
-                return redirect_index
-            index = self.add(where, Redirect(target))
-            where[thing][1] = index
-            return index
-        else:
-            for index in range(self.co_strings_start, len(where)):
-                # Do we have one for this co?
-                it = where[index]
-                if isinstance(it, Redirect) and it.target == target:
-                    return index
-            return self.add(where, Redirect(target))
+        thing_index, redirect_index = where[thing]
+        assert thing_index == target
+        if redirect_index >= self.co_strings_start:
+            # we already have a redirect for Thing in this co
+            # I'm not sure this can actually happen (co_names are unique, right?)
+            assert False, "Multiple redirects for a thing in the a CodeObject"
+            return redirect_index
+        index = self.add(where, Redirect(target))
+        where[thing][1] = index
+        return index
 
     def add_bytes(self, value: bytes) -> int:
         return self.add(self.blobs, Bytes(value))
