@@ -87,40 +87,6 @@ def decode_varint(data: bytes) -> tuple[int, int]:
     return result, pos
 
 
-class LongInt:
-    def __init__(self, value: int):
-        self.value = value
-
-    def get_bytes(self) -> bytes:
-        return encode_signed_varint(self.value)
-
-
-class Float:
-    def __init__(self, value: float):
-        self.value = value
-
-    def get_bytes(self) -> bytes:
-        return encode_float(self.value)
-
-
-class Bytes:
-    def __init__(self, value: bytes):
-        self.value = value
-
-    def get_bytes(self) -> bytes:
-        return encode_varint(len(self.value)) + self.value
-
-
-BlobConstant = LongInt | Float | Bytes
-
-class Redirect:
-    def __init__(self, target: int):
-        self.value = (type(self), id(self))  # should not be equal to anything else
-        self.target = target
-
-    def get_bytes(self) -> bytes:
-        raise ValueError('should not be called')
-
 class Thing:
     def __eq__(self, other):
         this = self.value
@@ -130,6 +96,41 @@ class Thing:
     def __hash__(self):
         this = self.value
         return hash((type(this), this))
+
+
+class LongInt(Thing):
+    def __init__(self, value: int):
+        self.value = value
+
+    def get_bytes(self) -> bytes:
+        return encode_signed_varint(self.value)
+
+
+class Float(Thing):
+    def __init__(self, value: float):
+        self.value = value
+
+    def get_bytes(self) -> bytes:
+        return encode_float(self.value)
+
+
+class Bytes(Thing):
+    def __init__(self, value: bytes):
+        self.value = value
+
+    def get_bytes(self) -> bytes:
+        return encode_varint(len(self.value)) + self.value
+
+
+BlobConstant = LongInt | Float | Bytes
+
+class Redirect(Thing):
+    def __init__(self, target: int):
+        self.value = (type(self), id(self))  # should not be equal to anything else
+        self.target = target
+
+    def get_bytes(self) -> bytes:
+        raise ValueError('should not be called')
 
 
 class String(Thing):
@@ -143,7 +144,7 @@ class String(Thing):
         return encode_varint(len(b)) + b
 
 
-class ComplexConstant:
+class ComplexConstant(Thing):
     """Constant represented by code."""
 
     def __init__(self, value: object, builder: Builder):
@@ -314,7 +315,7 @@ def is_function_code(code: types.CodeType) -> bool:
     )
 
 
-class CodeObject:
+class CodeObject(Thing):
     def __init__(self, code: types.CodeType, builder: Builder):
         self.value = code
         self.builder = builder
@@ -455,13 +456,18 @@ T = TypeVar("T", bound=HasValue)
 
 class Builder:
     def __init__(self):
-        self.codeobjs: list[CodeObject] = []
-        self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
-        # self.strings: list[String | Redirect] = []
-        self.blobs: list[BlobConstant] = []
-        self.constants: list[ComplexConstant] = []
+        SLOW_VERSION = False
+        if SLOW_VERSION:
+            self.codeobjs: list[CodeObject] = []
+            self.strings: list[String | Redirect] = []
+            self.blobs: list[BlobConstant] = []
+            self.constants: list[ComplexConstant] = []
+        else:
+            self.codeobjs: Mapping[CodeObject | Redirect, Tuple(int, int)] = OrderedDict()
+            self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
+            self.blobs: Mapping[BlobConstant | Redirect, Tuple(int, int)] = OrderedDict()
+            self.constants: Mapping[ComplexConstant | Redirect, Tuple(int, int)] = OrderedDict()
         self.locked = False
-
         self.co_strings_start = -1
 
     def lock(self):
@@ -482,7 +488,7 @@ class Builder:
         index = len(where)
         assert not self.locked
         if isinstance(where, Mapping):
-            where[thing] = (index, index)
+            where[thing] = [index, index]
         else:
             where.append(thing)
         return index
@@ -496,7 +502,7 @@ class Builder:
                 # I'm not sure this can actually happen (co_names are unique, right?)
                 return thing_index
             index = self.add(where, Redirect(target))
-            where[thing] = (thing_index, index)
+            where[thing][1] = index
             return index
         else:
             for index in range(self.co_strings_start, len(where)):
