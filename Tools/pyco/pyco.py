@@ -35,9 +35,22 @@ import types
 
 from collections import OrderedDict
 from inspect import CO_OPTIMIZED, CO_NEWLOCALS
-from typing import Iterator, Protocol, TypeVar, Mapping, Tuple
+from typing import (
+    Iterable,
+    cast,
+    Iterator,
+    Protocol,
+    TypeAlias,
+    TypeVar,
+    MutableMapping,
+    runtime_checkable,
+)
 
-from updis import *  # Update dis with extra opcodes
+# VS Code (PyLance) doesn't find updis.py, even though it's adjacent
+try:
+    from updis import *  # type: ignore
+except ImportError:
+    from .updis import *
 
 FUNCTION_FLAGS = CO_OPTIMIZED | CO_NEWLOCALS
 
@@ -87,19 +100,26 @@ def decode_varint(data: bytes) -> tuple[int, int]:
     return result, pos
 
 
-class Thing:
-    def __eq__(self, other):
+S = TypeVar("S", covariant=True)
+
+
+class HasValue(Protocol[S]):
+    value: S
+
+
+class Thing(HasValue[S]):
+    def __eq__(self, other: Thing[S]) -> bool:
         return self.key() == other.key()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.key())
 
-    def key(self):
+    def key(self) -> object:
         this = self.value
         return (type(self), type(this), this)
 
 
-class LongInt(Thing):
+class LongInt(Thing[int]):
     def __init__(self, value: int):
         self.value = value
 
@@ -107,7 +127,7 @@ class LongInt(Thing):
         return encode_signed_varint(self.value)
 
 
-class Float(Thing):
+class Float(Thing[float]):
     def __init__(self, value: float):
         self.value = value
 
@@ -115,7 +135,7 @@ class Float(Thing):
         return encode_float(self.value)
 
 
-class Bytes(Thing):
+class Bytes(Thing[bytes]):
     def __init__(self, value: bytes):
         self.value = value
 
@@ -125,16 +145,17 @@ class Bytes(Thing):
 
 BlobConstant = LongInt | Float | Bytes
 
-class Redirect(Thing):
+
+class Redirect(Thing[tuple[type, int]]):
     def __init__(self, target: int):
         self.value = (type(self), id(self))  # should not be equal to anything else
         self.target = target
 
     def get_bytes(self) -> bytes:
-        raise ValueError('should not be called')
+        raise ValueError("should not be called")
 
 
-class String(Thing):
+class String(Thing[str]):
     def __init__(self, value: str):
         assert value is not None
         self.value = value
@@ -145,10 +166,15 @@ class String(Thing):
         return encode_varint(len(b)) + b
 
 
-class ComplexConstant(Thing):
+ConstantValue: TypeAlias = (
+    None | complex | bytes | str | tuple[object, ...] | frozenset[object]
+)
+
+
+class ComplexConstant(Thing[ConstantValue]):
     """Constant represented by code."""
 
-    def __init__(self, value: object, builder: Builder):
+    def __init__(self, value: ConstantValue, builder: Builder):
         self.value = value
         self.builder = builder
         self.instructions: list[tuple[int, int]] = []
@@ -168,7 +194,7 @@ class ComplexConstant(Thing):
         self.stacksize += stackeffect  # Maybe a decrease
         self.max_stacksize = max(self.max_stacksize, self.stacksize)
 
-    def generate(self, value: None | complex | bytes | str | tuple[object]):
+    def generate(self, value: ConstantValue):
         match value:
             case None:
                 self.emit(LOAD_COMMON_CONSTANT, 0, 1)
@@ -197,12 +223,12 @@ class ComplexConstant(Thing):
                 # NOTE: frozenset() is used for 'x in <constant tuple>'
                 # TODO: Avoid needing a really big stack for large tuples
                 old_stacksize = self.stacksize
-                for item in t:
+                for item in cast(Iterable[ConstantValue], t):
                     if self.builder.is_constant(item):
                         oparg = self.builder.add_constant(item)
                         self.emit(LAZY_LOAD_CONSTANT, oparg, 1)
                     else:
-                        self.generate(item)
+                        self.generate(cast(ConstantValue, item))
                 opcode = BUILD_TUPLE if isinstance(t, tuple) else BUILD_SET
                 self.emit(opcode, len(t), 1 - len(t))
                 assert self.stacksize == old_stacksize + 1, \
@@ -211,8 +237,8 @@ class ComplexConstant(Thing):
                 self.emit(MAKE_CODE_OBJECT, self.builder.add_code(code), 1)
             case _:
                 raise TypeError(
-                        f"Cannot generate code for "
-                        f"{type(value).__name__} -- {value!r}")
+                    f"Cannot generate code for {type(value).__name__} -- {value!r}"
+                )
                 assert False, repr(value)
 
     def get_bytes(self):
@@ -246,12 +272,15 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
     instrs = code.co_code
     new = bytearray()
     for i in range(0, len(instrs), 2):
+        opcode: int
+        oparg: int
         opcode, oparg = instrs[i : i + 2]
         if opcode == LOAD_CONST:
             # TODO: Handle EXTENDED_ARG
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
                 raise RuntimeError(
-                    f"More than 256 constants in original {code.co_name} at line {code.co_firstlineno}"
+                    f"More than 256 constants in original "
+                    f"{code.co_name} at line {code.co_firstlineno}"
                 )
                 oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
@@ -264,7 +293,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                     match value:
                         case None:
                             oparg = 0
-                        case bool(b):
+                        case bool() as b:
                             oparg = 1 + b
                         case builtins.Ellipsis:
                             oparg = 3
@@ -276,13 +305,15 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                             oparg = 0
                         case _:
                             # This code and is_immediate() are out of sync
-                            assert False, f"{value} is not an immediately loadable constant"
+                            assert False, \
+                                f"{value} is not an immediately loadable constant"
             else:
                 opcode = LAZY_LOAD_CONSTANT
                 oparg = builder.add_constant(code.co_consts[oparg])
                 if oparg >= 256:
                     raise RuntimeError(
-                        f"More than 256 constants in {code.co_name} at line {code.co_firstlineno}"
+                        f"More than 256 constants in "
+                        f"{code.co_name} at line {code.co_firstlineno}"
                     )
         else:
             assert opcode not in dis.hasconst
@@ -298,7 +329,7 @@ def is_immediate(value: object) -> bool:
             return True
         case tuple(()):
             return True
-        case frozenset(s) if not s:
+        case frozenset(s) if not s:  # type: ignore  # Pyright doesn't like this
             return True
         case _:
             return False
@@ -317,7 +348,7 @@ def is_function_code(code: types.CodeType) -> bool:
     )
 
 
-class CodeObject(Thing):
+class CodeObject(Thing[types.CodeType]):
     def __init__(self, code: types.CodeType, builder: Builder):
         self.value = code
         self.builder = builder
@@ -325,9 +356,7 @@ class CodeObject(Thing):
         self.co_strings_size = 0
 
     def preload(self):
-        """Compute indexes that need to be patched into existing code.
-
-        """
+        """Compute indexes that need to be patched into existing code."""
         code = self.value
         if is_function_code(code):
             consts = code.co_consts[1:]
@@ -355,8 +384,9 @@ class CodeObject(Thing):
         """
         code = self.value
         self.builder.add_string(code.co_name)
-        self.builder.add_bytes(code.co_linetable)
-        self.builder.add_bytes(code.co_exceptiontable)
+        # TODO: Typeshed stubs need to be updated to add these two fields
+        self.builder.add_bytes(code.co_linetable)  # type: ignore
+        self.builder.add_bytes(code.co_exceptiontable)  # type: ignore
         self.builder.add_string(code.co_filename)
         if is_function_code(code) and code.co_consts:
             docstring = code.co_consts[0]
@@ -368,14 +398,14 @@ class CodeObject(Thing):
     def get_bytes(self) -> bytes:
         assert self.builder.locked
         code = self.value
-        ltindex = self.builder.add_bytes(code.co_linetable)
-        etindex = self.builder.add_bytes(code.co_exceptiontable)
+        # TODO: Typeshed stubs need to be updated to add these two fields
+        ltindex = self.builder.add_bytes(code.co_linetable)  # type: ignore
+        etindex = self.builder.add_bytes(code.co_exceptiontable)  # type: ignore
         docindex = 0
         if is_function_code(code) and code.co_consts:
             docstring = code.co_consts[0]
             if docstring is not None:
                 docindex = self.builder.add_string(docstring)
-
 
         new_bytecode = rewritten_bytecode(code, self.builder)
 
@@ -444,31 +474,33 @@ class CodeObject(Thing):
         return bytes(result)
 
 
+@runtime_checkable
 class BytesProducer(Protocol):
     def get_bytes(self) -> bytes:
         ...
 
 
-class HasValue(Protocol):
-    value: object
+T = TypeVar("T")
 
 
-T = TypeVar("T", bound=HasValue)
+Pair: TypeAlias = tuple[int, int]
 
 
 class Builder:
     def __init__(self):
-        self.codeobjs: Mapping[CodeObject | Redirect, Tuple(int, int)] = OrderedDict()
-        self.strings: Mapping[String | Redirect, Tuple(int, int)] = OrderedDict()
-        self.blobs: Mapping[BlobConstant | Redirect, Tuple(int, int)] = OrderedDict()
-        self.constants: Mapping[ComplexConstant | Redirect, Tuple(int, int)] = OrderedDict()
+        self.codeobjs: MutableMapping[CodeObject | Redirect, Pair] = OrderedDict()
+        self.strings: MutableMapping[String | Redirect, Pair] = OrderedDict()
+        self.blobs: MutableMapping[BlobConstant | Redirect, Pair] = OrderedDict()
+        self.constants: MutableMapping[ComplexConstant | Redirect, Pair] = OrderedDict()
         self.locked = False
         self.co_strings_start = -1
 
     def lock(self):
         self.locked = True
 
-    def add(self, where: list[T|Redirect], thing: T|Redirect) -> int:
+    def add(
+        self, where: MutableMapping[T | Redirect, Pair], thing: T | Redirect
+    ) -> int:
         # Look for a match
         if thing in where:
             index, _ = where[thing]
@@ -476,10 +508,12 @@ class Builder:
         # Append a new one
         index = len(where)
         assert not self.locked
-        where[thing] = [index, index]
+        where[thing] = (index, index)
         return index
 
-    def add_redirect(self, where: list[T], thing: T, target: int):
+    def add_redirect(
+        self, where: MutableMapping[T | Redirect, Pair], thing: T, target: int
+    ):
         thing_index, redirect_index = where[thing]
         assert thing_index == target
         if redirect_index >= self.co_strings_start:
@@ -488,7 +522,7 @@ class Builder:
             assert False, "Multiple redirects for a thing in the a CodeObject"
             return redirect_index
         index = self.add(where, Redirect(target))
-        where[thing][1] = index
+        where[thing] = (where[thing][0], index)
         return index
 
     def add_bytes(self, value: bytes) -> int:
@@ -507,14 +541,14 @@ class Builder:
     def add_float(self, value: float) -> int:
         return self.add(self.blobs, Float(value))
 
-    def is_constant(self, value: object) -> bool:
+    def is_constant(self, value: ConstantValue) -> bool:
         # TODO: Avoid O(N**2) lookup behavior
-        for index, it in enumerate(self.constants):
+        for _, it in enumerate(self.constants):
             if type(it.value) is type(value) and it.value == value:
                 return True
         return False
 
-    def add_constant(self, value: object) -> int:
+    def add_constant(self, value: ConstantValue) -> int:
         cc = ComplexConstant(value, self)
         index = self.add(self.constants, cc)
         cc.set_index(index)
@@ -526,11 +560,13 @@ class Builder:
 
     def preload_code_objects(self):
         for co in self.codeobjs:
-            co.preload()
+            if not isinstance(co, Redirect):
+                co.preload()
 
     def finish_code_objects(self):
         for co in self.codeobjs:
-            co.finish()
+            if not isinstance(co, Redirect):
+                co.finish()
 
     def get_bytes(self) -> bytes:
         code_section_size = 4 + 4 * len(self.codeobjs)
@@ -546,10 +582,10 @@ class Builder:
         )
         binary_data = bytearray()
 
-        def helper(what: list[BytesProducer], name: str) -> bytearray:
+        def helper(what: Iterable[BytesProducer | Redirect], name: str) -> bytearray:
             nonlocal binary_data
             offsets = bytearray()
-            for i, thing in enumerate(what):
+            for thing in what:
                 if isinstance(thing, Redirect):
                     offset = (thing.target << 1) | 1
                 else:
@@ -611,7 +647,7 @@ def add_everything(builder: Builder, code: types.CodeType):
     builder.finish_code_objects()
 
 
-def build_source(source: str | bytes, filename="<string>") -> Builder:
+def build_source(source: str | bytes, filename: str = "<string>") -> Builder:
     builder = Builder()
     code = compile(source, filename, "exec", dont_inherit=True)
     add_everything(builder, code)
@@ -619,7 +655,7 @@ def build_source(source: str | bytes, filename="<string>") -> Builder:
     return builder
 
 
-def serialize_source(source: str | bytes, filename="<string>") -> bytes:
+def serialize_source(source: str | bytes, filename: str = "<string>") -> bytes:
     builder = build_source(source)
     data = builder.get_bytes()
     return data
