@@ -368,8 +368,13 @@ class CodeObject(Thing[types.CodeType]):
 
         self.co_strings_start = len(self.builder.strings)
         self.builder.co_strings_start = self.co_strings_start
-        for name in code.co_names:
-            self.builder.add_string(name)
+        for i, name in enumerate(code.co_names):
+            index = self.builder.add_string(name)
+            if index != self.co_strings_start + i:
+                raise RuntimeError(
+                    f"Name index mismatch: "
+                    f"{self.co_strings_start=} {i=} {name=} {index=}"
+                )
         self.co_strings_size = len(code.co_names)
         self.builder.co_strings_start = -1
         assert len(self.builder.strings) - self.co_strings_start == self.co_strings_size
