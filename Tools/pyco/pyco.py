@@ -675,9 +675,9 @@ def report(builder: Builder):
         except RuntimeError as err:
             print(f"  Code object {i} -- Error: {err}")
             continue
-        header = struct.unpack("<12L", b[:48])
+        header = struct.unpack("<14L", b[:56])
         n_instrs = header[-1]
-        bytecode = b[48 : 48 + 2 * n_instrs]
+        bytecode = b[56 : 56 + 2 * n_instrs]
         print(f"  Code object {i}")
         print(f"  Header {header}")
         stream = io.StringIO()
