@@ -266,8 +266,6 @@ class ComplexConstant(Thing[ConstantValue]):
 def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
     """Rewrite some instructions.
     - Replace LOAD_CONST i with LAZY_LOAD_CONSTANT j.
-    - For ops whose argument is a name, replace oparg with
-      corresponding string index.
     """
     instrs = code.co_code
     new = bytearray()
@@ -278,13 +276,11 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
         if opcode == LOAD_CONST:
             # TODO: Handle EXTENDED_ARG
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
-                raise RuntimeError(
-                    f"More than 256 constants in original "
-                    f"{code.co_name} at line {code.co_firstlineno}"
-                )
                 oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
             if is_immediate(value):
+                if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
+                    instrs[i - 2] = NOP
                 if type(value) == int:
                     opcode = MAKE_INT
                     oparg = value
@@ -310,11 +306,6 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
             else:
                 opcode = LAZY_LOAD_CONSTANT
                 oparg = builder.add_constant(code.co_consts[oparg])
-                if oparg >= 256:
-                    raise RuntimeError(
-                        f"More than 256 constants in "
-                        f"{code.co_name} at line {code.co_firstlineno}"
-                    )
         else:
             assert opcode not in dis.hasconst
         new.extend((opcode, oparg))
@@ -354,6 +345,8 @@ class CodeObject(Thing[types.CodeType]):
         self.builder = builder
         self.co_strings_start = 0
         self.co_strings_size = 0
+        self.co_consts_start = 0
+        self.co_consts_size = 0
 
     def preload(self):
         """Compute indexes that need to be patched into existing code."""
@@ -362,10 +355,25 @@ class CodeObject(Thing[types.CodeType]):
             consts = code.co_consts[1:]
         else:
             consts = code.co_consts
-        for value in consts:
-            if not is_immediate(value):
-                self.builder.add_constant(value)
 
+        self.co_consts_start = len(self.builder.constants)
+        self.builder.co_consts_start = self.co_consts_start
+        for i, value in enumerate(consts):
+            if not is_immediate(value):
+                index = self.builder.add_constant(value)
+            else:
+                # not used, but keeps it simple with the indices
+                index = self.builder.add_constant(value)
+            if index != self.co_consts_start + i:
+                raise RuntimeError(
+                    f"Const index mismatch: "
+                    f"{self.co_consts_start=} {i=} {value=} {index=}"
+                )
+        self.co_consts_size = len(consts)
+        self.builder.co_consts_start = -1
+        assert len(self.builder.constants) - self.co_consts_start == self.co_consts_size
+
+        ## co_names
         self.co_strings_start = len(self.builder.strings)
         self.builder.co_strings_start = self.co_strings_start
         for i, name in enumerate(code.co_names):
@@ -417,7 +425,7 @@ class CodeObject(Thing[types.CodeType]):
         result = bytearray()
 
         prefix = struct.pack(
-            "<13L",
+            "<15L",
             code.co_argcount,
             code.co_posonlyargcount,
             code.co_kwonlyargcount,
@@ -431,6 +439,8 @@ class CodeObject(Thing[types.CodeType]):
             etindex,
             self.co_strings_start,
             self.co_strings_size,
+            self.co_consts_start,
+            self.co_consts_size,
         )
 
         result += prefix
@@ -517,14 +527,15 @@ class Builder:
         return index
 
     def add_redirect(
-        self, where: MutableMapping[T | Redirect, Pair], thing: T, target: int
+        self, where: MutableMapping[T | Redirect, Pair], start_index: int, thing: T, target: int
     ):
         thing_index, redirect_index = where[thing]
         assert thing_index == target
-        if redirect_index >= self.co_strings_start:
+        if redirect_index >= start_index:
             # we already have a redirect for Thing in this co
-            # I'm not sure this can actually happen (co_names are unique, right?)
-            assert False, "Multiple redirects for a thing in the a CodeObject"
+            if self.co_strings_start >= 0:
+                # Should not happen during the co_names construction stage
+                assert False, "Multiple redirects for a thing in a CodeObject"
             return redirect_index
         index = self.add(where, Redirect(target))
         where[thing] = (where[thing][0], index)
@@ -537,7 +548,8 @@ class Builder:
         thing = String(value)
         index = self.add(self.strings, thing)
         if index < self.co_strings_start:
-            return self.add_redirect(self.strings, thing, index)
+            return self.add_redirect(
+                self.strings, self.co_strings_start, thing, index)
         return index
 
     def add_long(self, value: int) -> int:
@@ -556,6 +568,9 @@ class Builder:
     def add_constant(self, value: ConstantValue) -> int:
         cc = ComplexConstant(value, self)
         index = self.add(self.constants, cc)
+        if index < self.co_consts_start:
+            index = self.add_redirect(
+                self.constants, self.co_consts_start, cc, index)
         cc.set_index(index)
         return index
 

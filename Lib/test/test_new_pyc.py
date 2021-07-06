@@ -156,6 +156,12 @@ class TestNewPyc(unittest.TestCase):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
         self.do_test_speed('\n'.join(body), "many_locals_with_call", call=True)
 
+    def test_speed_many_constants(self):
+        body = ["    a0, b0 = 1, 1"]
+        for i in range(300):
+            body.append(f"    a{i+1}, b{i+1} = b{i}+{i}, a{i}+{float(i)}")
+        self.do_test_speed('\n'.join(body), "many_locals")
+
     def test_speed_many_globals(self):
         NUM_FUNCS = 100
         GLOBALS_PER_FUNC = 100
