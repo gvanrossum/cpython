@@ -4516,7 +4516,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             Py_INCREF(value);
             assert(EMPTY());
             struct activation_record *rec = current_activation_record;
-            assert(rec != NULL);
+            if (rec == NULL) {
+                retval = value;
+                f->f_state = FRAME_RETURNED;
+                f->f_stackdepth = 0;
+                goto exiting;
+            }
             first_instr = rec->prev_first_instr;
             next_instr = rec->prev_next_instr;
             stack_bottom = rec->prev_stack_bottom;

@@ -74,6 +74,22 @@ class TestNewPyc(unittest.TestCase):
         assert f(1, 10) == 11
         assert f(a=1, b=10) == 11
 
+    def test_consts(self):
+        NUM_FUNCS = 2
+        srcs = ["hello = ('hello', 42)\n"]
+        for num in range(NUM_FUNCS):
+            srcs.append(f"def f{num}():\n    return ({num}, 'hello {num}')\n")
+        source = "\n".join(srcs)
+        builder = pyco.build_source(source)
+        pyco.report(builder)
+        data = pyco.serialize_source(source)
+        code = marshal.loads(data)
+        ns = {}
+        exec(code, ns)
+        for num in range(NUM_FUNCS):
+            fco = ns[f"f{num}"]
+            assert (num, f"hello {num}") in fco.__code__.co_consts
+
     def do_test_speed(self, body, test_name, call=False):
         NUM_FUNCS = 100
         functions = [
@@ -153,6 +169,7 @@ class TestNewPyc(unittest.TestCase):
                 source.append(f"        a_{f_index}_{g_index}+\\")
             source.append(f"        0")
         self.do_test_speed_for_source('\n'.join(source), "many_globals")
+
 
 if __name__ == "__main__":
     unittest.main()

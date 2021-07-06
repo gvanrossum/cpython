@@ -1546,6 +1546,8 @@ static struct PyMethodDef code_methods[] = {
     {NULL, NULL}                /* sentinel */
 };
 
+static PyObject *eval_constant(PyCodeObject *code, int index);
+
 static PyObject *
 code_getattr(PyObject *self, PyObject *attr)
 {
@@ -1561,11 +1563,12 @@ code_getattr(PyObject *self, PyObject *attr)
         PyObject *names = code->co_names;
         if (names != NULL && !Py_IsNone(names)) {
             assert(PyTuple_CheckExact(names));
-            int n = PyTuple_GET_SIZE(names);
+            Py_ssize_t n = PyTuple_GET_SIZE(names);
             for (int i = 0; i < n; i++) {
                 PyObject *name = PyTuple_GET_ITEM(names, i);
                 if (name == NULL) {
-                    name = _PyHydrate_LoadName(code->co_pyc, code->co_strings_start+i);
+                    name = _PyHydrate_LoadName(code->co_pyc,
+                                               code->co_strings_start + i);
                     if (name == NULL) {
                         return NULL;
                     }
@@ -1577,7 +1580,27 @@ code_getattr(PyObject *self, PyObject *attr)
                 }
             }
         }
-        // TODO: Fully hydrate co_consts
+        // Fully hydrate co_consts
+        PyObject *consts = code->co_consts;
+        if (consts != NULL && !Py_IsNone(consts)) {
+            assert(PyTuple_CheckExact(consts));
+            Py_ssize_t n = PyTuple_GET_SIZE(consts);
+            for (int i = 0; i < n; i++) {
+                PyObject *c = PyTuple_GET_ITEM(consts, i);
+                if (c == NULL) {
+                    // TODO: Add code->co_consts_start, once it exists
+                    c = eval_constant(code, i);
+                    if (c == NULL) {
+                        return NULL;
+                    }
+                    if (PyTuple_GET_ITEM(consts, i) == NULL) {
+                        if (PyTuple_SetItem(consts, i, c) == -1) {
+                            return NULL;
+                        }
+                    }
+                }
+            }
+        }
     }
     return PyObject_GenericGetAttr(self, attr);
 }
@@ -2061,4 +2084,67 @@ _PyCode_Hydrate(PyCodeObject *code)
     // Mark hydrated
     code->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(code->co_code);
     return code;
+}
+
+
+/* Hydrate a dehydrated constant.
+ *
+ * Normally this is done from the LOAD_LAZY_CONSTANT instruction,
+ * but sometimes we need to do it without an interpreter handy
+ * (when fully hydrating co_consts before passing it to Python).
+ * In that case, just construct a code object for these and eval it.
+ * It's up to the caller to put the result back into co_consts.
+ */
+static PyObject *
+eval_constant(PyCodeObject *code, int index)
+{
+    struct lazy_pyc *pyc = code->co_pyc;
+    if (pyc == NULL) {
+        PyErr_SetString(PyExc_SystemError,
+                         "call_constant from non-PYC code");
+        return NULL;
+    }
+    PyObject *result = PyTuple_GetItem(pyc->consts, index);
+    if (result != NULL) {
+        Py_INCREF(result);
+        return result;
+    }
+    uint32_t offset = pyc->const_offsets[index];
+    uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
+    uint32_t stacksize = *pointer++;
+    Py_ssize_t n_instrs = *pointer++;
+    PyObject *bytecode = PyBytes_FromStringAndSize((char *)pointer, 2*n_instrs);
+    if (bytecode == NULL) {
+        return NULL;
+    }
+    PyObject *name = PyUnicode_FromString("<dummy>");
+    if (name == NULL) {
+        Py_DECREF(name);
+        Py_DECREF(bytecode);
+        return NULL;
+    }
+    Py_INCREF(name);  // For filename, right?
+    struct _PyCodeConstructor con = {
+        .name = name,
+        .filename = name,
+        .stacksize = stacksize,
+        .pyc = pyc,
+        .consts = pyc->consts,
+        // TODO: Do we ever need names here? .names = pyc->names,
+    };
+    PyCodeObject *newcode = _PyCode_New(&con);
+    if (newcode == NULL) {
+        Py_DECREF(bytecode);
+        return NULL;
+    }
+    newcode->co_code = bytecode;
+    newcode->co_firstinstr = (_Py_CODEUNIT *)PyBytes_AsString(bytecode);
+    Py_INCREF(pyc->consts);
+    newcode->co_consts = pyc->consts;
+    Py_INCREF(pyc->names);
+    newcode->co_names = pyc->names;
+    // unsigned char *cp = pointer;
+    result = PyEval_EvalCode((PyObject *)newcode, PyEval_GetGlobals(), NULL);
+    Py_DECREF(newcode);
+    return result;
 }
