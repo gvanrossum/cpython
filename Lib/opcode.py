@@ -218,7 +218,6 @@ def_op('DICT_UPDATE', 165)
 def_op('CALL_METHOD_KW', 166)
 
 def_op('LAZY_LOAD_CONSTANT', 170)
-hasconst.append(170)
 def_op('MAKE_STRING', 171)
 def_op('MAKE_INT', 172)
 def_op('MAKE_LONG', 173)
