@@ -152,6 +152,8 @@ class PycFile:
         etindex = reader.read_long()
         strings_start = reader.read_long()
         strings_size = reader.read_long()
+        consts_start = reader.read_long()
+        consts_size = reader.read_long()
         # TODO: Technically object 0 is also a string, not None
         docstring = self.get_string(docindex) if docindex else None
         kwargs.update(
@@ -201,6 +203,8 @@ class PycFile:
             strings.append(s)
         # Print the constants, as another example
         for i, offset in enumerate(self.const_offsets):
+            if offset & 1:  # Redirect
+                offset = self.const_offsets[offset >> 1]
             reader.seek(offset)
             max_stacksize = reader.read_long()
             n_instrs = reader.read_long()
@@ -212,7 +216,7 @@ class PycFile:
         # We're on a roll! Print the code objects
         for i, offset in enumerate(self.code_offsets):
             reader.seek(offset)
-            values = struct.unpack("<14L", reader.read_raw_bytes(14 * 4))
+            values = struct.unpack("<16L", reader.read_raw_bytes(16 * 4))
             print(f"Code object {i} at {offset}")
             print(values)
             n_instrs = values[-1]
