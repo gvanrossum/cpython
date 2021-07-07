@@ -1121,7 +1121,7 @@ get_subroutine_info(PyThreadState *tstate, PyCodeObject *code, int oparg,
 {
     struct lazy_pyc *pyc = code->co_pyc;
     assert(pyc);
-    uint32_t offset = pyc->const_offsets[oparg];
+    uint32_t offset = pyc->const_offsets[oparg + code->co_consts_start];
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;
@@ -4402,7 +4402,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_STRING): {
-            PyObject *value = _PyHydra_UnicodeFromIndex(co->co_pyc, oparg);
+            PyObject *value = _PyHydra_UnicodeFromIndex(co->co_pyc, co->co_consts_start + oparg);
             if (value == NULL) {
                 goto error;
             }
@@ -4418,7 +4418,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_LONG): {
-            PyObject *value = _PyHydra_LongFromIndex(co->co_pyc, oparg);
+            PyObject *value = _PyHydra_LongFromIndex(co->co_pyc, co->co_consts_start + oparg);
             if (value == NULL) {
                 goto error;
             }
@@ -4427,7 +4427,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_FLOAT): {
-            PyObject *value = _PyHydra_FloatFromIndex(co->co_pyc, oparg);
+            PyObject *value = _PyHydra_FloatFromIndex(co->co_pyc, co->co_consts_start + oparg);
             if (value == NULL) {
                 goto error;
             }

@@ -276,11 +276,13 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
         if opcode == LOAD_CONST:
             # TODO: Handle EXTENDED_ARG
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
+                raise RuntimeError(
+                    f"More than 256 constants in original "
+                    f"{code.co_name} at line {code.co_firstlineno}"
+                )
                 oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
             if is_immediate(value):
-                if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
-                    instrs[i - 2] = NOP
                 if type(value) == int:
                     opcode = MAKE_INT
                     oparg = value
@@ -313,6 +315,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
 
 
 def is_immediate(value: object) -> bool:
+    return False
     match value:
         case None | bool() | builtins.Ellipsis | tuple(()):
             return True
@@ -362,16 +365,17 @@ class CodeObject(Thing[types.CodeType]):
             if not is_immediate(value):
                 index = self.builder.add_constant(value)
             else:
-                # not used, but keeps it simple with the indices
-                index = self.builder.add_constant(value)
-            if index != self.co_consts_start + i:
-                raise RuntimeError(
-                    f"Const index mismatch: "
-                    f"{self.co_consts_start=} {i=} {value=} {index=}"
-                )
-        self.co_consts_size = len(consts)
+                raise ValueError('no immediates for now')
+
+            ## This check is wrong - we can add more constants when
+            ## cc.set_index calls generate()
+            # if index != self.co_consts_start + i:
+            #    raise RuntimeError(
+            #        f"Const index mismatch: "
+            #        f"{self.co_consts_start=} {i=} {value=} {index=}"
+            #    )
+        self.co_consts_size = len(self.builder.constants) - self.co_consts_start
         self.builder.co_consts_start = -1
-        assert len(self.builder.constants) - self.co_consts_start == self.co_consts_size
 
         ## co_names
         self.co_strings_start = len(self.builder.strings)
@@ -423,7 +427,6 @@ class CodeObject(Thing[types.CodeType]):
         new_bytecode = rewritten_bytecode(code, self.builder)
 
         result = bytearray()
-
         prefix = struct.pack(
             "<15L",
             code.co_argcount,

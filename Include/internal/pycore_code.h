@@ -244,6 +244,8 @@ struct _PyCodeConstructor {
     uint32_t pyc_index;
     uint32_t co_strings_start;
     uint32_t co_strings_size;
+    uint32_t co_consts_start;
+    uint32_t co_consts_size;
 };
 
 // Using an "arguments struct" like this is helpful for maintainability

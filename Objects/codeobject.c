@@ -350,6 +350,8 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     co->co_pyc_index = con->pyc_index;
     co->co_strings_start = con->co_strings_start;
     co->co_strings_size = con->co_strings_size;
+    co->co_consts_start = con->co_consts_start;
+    co->co_consts_size = con->co_consts_size;
 
     co->co_argcount = con->argcount;
     co->co_posonlyargcount = con->posonlyargcount;
@@ -1588,8 +1590,7 @@ code_getattr(PyObject *self, PyObject *attr)
             for (int i = 0; i < n; i++) {
                 PyObject *c = PyTuple_GET_ITEM(consts, i);
                 if (c == NULL) {
-                    // TODO: Add code->co_consts_start, once it exists
-                    c = eval_constant(code, i);
+                    c = eval_constant(code, code->co_consts_start + i);
                     if (c == NULL) {
                         return NULL;
                     }
@@ -1945,6 +1946,8 @@ struct code_template {
     uint32_t exceptiontable;  // Bytes index
     uint32_t co_strings_start;
     uint32_t co_strings_size;
+    uint32_t co_consts_start;
+    uint32_t co_consts_size;
 };
 
 PyObject *
@@ -1966,6 +1969,8 @@ _PyCode_NewDehydrated(struct lazy_pyc *pyc, uint32_t index)
         .pyc_index = index,
         .co_strings_start = template->co_strings_start,
         .co_strings_size = template->co_strings_size,
+        .co_consts_start = template->co_consts_start,
+        .co_consts_size = template->co_consts_size,
 
         // The following members will be updated during hydration:
         // docstring, locationtable, exceptiontable,
@@ -2053,8 +2058,22 @@ _PyCode_Hydrate(PyCodeObject *code)
             return NULL;
         }
     }
-    Py_INCREF(pyc->consts);
-    code->co_consts = pyc->consts;  // The items may still be NULL!!!
+
+    if (code->co_consts_start) {
+        if (code->co_consts_size) {
+            code->co_consts = PyTuple_New(code->co_consts_size);
+            if (code->co_consts == NULL) {
+                return NULL;
+            }
+        }
+        else {
+            code->co_consts = NULL;
+        }
+    }
+    else {
+        Py_INCREF(pyc->consts);
+        code->co_consts = pyc->consts;  // The items may still be NULL!!!
+    }
 
     if (pyc->names == NULL) {
         pyc->names = PyTuple_New(pyc->n_strings);
@@ -2089,7 +2108,7 @@ _PyCode_Hydrate(PyCodeObject *code)
 
 /* Hydrate a dehydrated constant.
  *
- * Normally this is done from the LOAD_LAZY_CONSTANT instruction,
+ * Normally this is done from the LAZY_LOAD_CONSTANT instruction,
  * but sometimes we need to do it without an interpreter handy
  * (when fully hydrating co_consts before passing it to Python).
  * In that case, just construct a code object for these and eval it.

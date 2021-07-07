@@ -108,6 +108,8 @@ struct PyCodeObject {
     int co_pyc_index;  // Index of *this* object in the list of code objects
     int co_strings_start;
     int co_strings_size;
+    int co_consts_start;
+    int co_consts_size;
 };
 
 /* Masks for co_flags above */
