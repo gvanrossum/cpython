@@ -31,6 +31,9 @@ LOAD_COMMON_CONSTANT = def_op(
 )  # None, False, True
 RETURN_CONSTANT = def_op("RETURN_CONSTANT", lastop := lastop + 1)
 
+if LAZY_LOAD_CONSTANT in dis.hasconst:
+    dis.hasconst.remove(LAZY_LOAD_CONSTANT)
+
 del lastop, def_op
 
 CO_FAST_LOCAL = 0x20
