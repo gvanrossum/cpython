@@ -548,7 +548,7 @@ class Builder:
 
     def is_constant(self, value: ConstantValue) -> bool:
         # TODO: Avoid O(N**2) lookup behavior
-        for _, it in enumerate(self.constants):
+        for it in self.constants:
             if type(it.value) is type(value) and it.value == value:
                 return True
         return False
