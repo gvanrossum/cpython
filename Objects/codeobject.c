@@ -2059,20 +2059,9 @@ _PyCode_Hydrate(PyCodeObject *code)
         }
     }
 
-    if (code->co_consts_start) {
-        if (code->co_consts_size) {
-            code->co_consts = PyTuple_New(code->co_consts_size);
-            if (code->co_consts == NULL) {
-                return NULL;
-            }
-        }
-        else {
-            code->co_consts = NULL;
-        }
-    }
-    else {
-        Py_INCREF(pyc->consts);
-        code->co_consts = pyc->consts;  // The items may still be NULL!!!
+    code->co_consts = PyTuple_New(code->co_consts_size);
+    if (code->co_consts == NULL) {
+        return NULL;
     }
 
     if (pyc->names == NULL) {

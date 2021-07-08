@@ -4365,12 +4365,13 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(LAZY_LOAD_CONSTANT): {
-            PyObject *value = GETITEM(consts, oparg);
+            PyObject *value = GETITEM(co->co_pyc->consts, co->co_consts_start + oparg);
             if (value != NULL) {
                 Py_INCREF(value);
                 PUSH(value);
                 DISPATCH();
             }
+
             _Py_CODEUNIT *instrs;
             int stacksize;
             get_subroutine_info(tstate, co, oparg, &instrs, &stacksize);
