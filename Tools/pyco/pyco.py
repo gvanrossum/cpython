@@ -306,6 +306,9 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                             assert False, \
                                 f"{value} is not an immediately loadable constant"
             else:
+                if is_function_code(code):
+                    assert oparg > 0
+                    oparg -= 1
                 opcode = LAZY_LOAD_CONSTANT
                 # oparg = builder.add_constant(code.co_consts[oparg])
         else:
