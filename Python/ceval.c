@@ -4402,7 +4402,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_STRING): {
-            PyObject *value = _PyHydra_UnicodeFromIndex(co->co_pyc, co->co_consts_start + oparg);
+            PyObject *value = _PyHydra_UnicodeFromIndex(co->co_pyc, oparg);
             if (value == NULL) {
                 goto error;
             }
@@ -4418,7 +4418,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_LONG): {
-            PyObject *value = _PyHydra_LongFromIndex(co->co_pyc, co->co_consts_start + oparg);
+            PyObject *value = _PyHydra_LongFromIndex(co->co_pyc, oparg);
             if (value == NULL) {
                 goto error;
             }
@@ -4427,7 +4427,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(MAKE_FLOAT): {
-            PyObject *value = _PyHydra_FloatFromIndex(co->co_pyc, co->co_consts_start + oparg);
+            PyObject *value = _PyHydra_FloatFromIndex(co->co_pyc, oparg);
             if (value == NULL) {
                 goto error;
             }

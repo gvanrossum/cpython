@@ -225,7 +225,7 @@ class ComplexConstant(Thing[ConstantValue]):
                 old_stacksize = self.stacksize
                 for item in cast(Iterable[ConstantValue], t):
                     if self.builder.is_constant(item):
-                        oparg = self.builder.add_constant(item)
+                        oparg = self.builder.index_of_constant(item)
                         self.emit(LAZY_LOAD_CONSTANT, oparg, 1)
                     else:
                         self.generate(cast(ConstantValue, item))
@@ -307,7 +307,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                                 f"{value} is not an immediately loadable constant"
             else:
                 opcode = LAZY_LOAD_CONSTANT
-                oparg = builder.add_constant(code.co_consts[oparg])
+                # oparg = builder.add_constant(code.co_consts[oparg])
         else:
             assert opcode not in dis.hasconst
         new.extend((opcode, oparg))
@@ -369,11 +369,11 @@ class CodeObject(Thing[types.CodeType]):
 
             ## This check is wrong - we can add more constants when
             ## cc.set_index calls generate()
-            # if index != self.co_consts_start + i:
-            #    raise RuntimeError(
-            #        f"Const index mismatch: "
-            #        f"{self.co_consts_start=} {i=} {value=} {index=}"
-            #    )
+            if index != self.co_consts_start + i:
+                raise RuntimeError(
+                    f"Const index mismatch: "
+                    f"{self.co_consts_start=} {i=} {value=} {index=}"
+                )
         self.co_consts_size = len(self.builder.constants) - self.co_consts_start
         self.builder.co_consts_start = -1
 
@@ -512,6 +512,7 @@ class Builder:
         self.constants: MutableMapping[ComplexConstant | Redirect, Pair] = OrderedDict()
         self.locked = False
         self.co_strings_start = -1
+        self.co_consts_start = -1
 
     def lock(self):
         self.locked = True
@@ -562,11 +563,12 @@ class Builder:
         return self.add(self.blobs, Float(value))
 
     def is_constant(self, value: ConstantValue) -> bool:
-        # TODO: Avoid O(N**2) lookup behavior
-        for it in self.constants:
-            if type(it.value) is type(value) and it.value == value:
-                return True
-        return False
+        return ComplexConstant(value, self) in self.constants
+
+    def index_of_constant(self, value: ConstantValue) -> bool:
+        cc = ComplexConstant(value, self)
+        assert cc in self.constants
+        return self.constants[cc][0]
 
     def add_constant(self, value: ConstantValue) -> int:
         cc = ComplexConstant(value, self)
@@ -693,9 +695,9 @@ def report(builder: Builder):
         except RuntimeError as err:
             print(f"  Code object {i} -- Error: {err}")
             continue
-        header = struct.unpack("<14L", b[:56])
+        header = struct.unpack("<16L", b[:64])
         n_instrs = header[-1]
-        bytecode = b[56 : 56 + 2 * n_instrs]
+        bytecode = b[64 : 64 + 2 * n_instrs]
         print(f"  Code object {i}")
         print(f"  Header {header}")
         stream = io.StringIO()
