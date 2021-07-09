@@ -712,6 +712,9 @@ def report(builder: Builder):
             print(line)
     print(f"Constant table -- {len(builder.constants)} items:")
     for i, constant in enumerate(builder.constants):
+        if isinstance(constant, Redirect):
+            print(f"  Constant {i} redirects to constant {constant.target}")
+            continue
         b = constant.get_bytes()
         stacksize, n_instrs = struct.unpack("<LL", b[:8])
         bytecode = b[8:]
