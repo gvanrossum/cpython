@@ -32,7 +32,7 @@ PyFunction_NewWithQualName(PyObject *code, PyObject *globals, PyObject *qualname
     PyObject *doc;
     if (consts != NULL && PyTuple_Size(consts) >= 1) {
         doc = PyTuple_GetItem(consts, 0);
-        if (!PyUnicode_Check(doc)) {
+        if (doc == NULL || !PyUnicode_Check(doc)) {
             doc = Py_None;
         }
     }
