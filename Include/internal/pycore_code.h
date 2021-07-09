@@ -392,6 +392,7 @@ struct lazy_pyc {
 static /*inline*/ uint32_t
 lazy_index_to_offset(uint32_t *offsets, int n_offsets, uint32_t index)
 {
+    assert(0 <= index && index < n_offsets);
     uint32_t offset = offsets[index];
     if (offset & 1) {
         index = offset >> 1;
