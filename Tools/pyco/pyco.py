@@ -274,13 +274,8 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
         oparg: int
         opcode, oparg = instrs[i : i + 2]
         if opcode == LOAD_CONST:
-            # TODO: Handle EXTENDED_ARG
             if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
-                raise RuntimeError(
-                    f"More than 256 constants in original "
-                    f"{code.co_name} at line {code.co_firstlineno}"
-                )
-                oparg = oparg | (instrs[i - 1] << 8)
+                pass # oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
             if is_immediate(value):
                 if type(value) == int:
