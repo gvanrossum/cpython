@@ -306,11 +306,7 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
                             assert False, \
                                 f"{value} is not an immediately loadable constant"
             else:
-                if is_function_code(code):
-                    assert oparg > 0
-                    oparg -= 1
                 opcode = LAZY_LOAD_CONSTANT
-                # oparg = builder.add_constant(code.co_consts[oparg])
         else:
             assert opcode not in dis.hasconst
         new.extend((opcode, oparg))
@@ -357,10 +353,7 @@ class CodeObject(Thing[types.CodeType]):
     def preload(self):
         """Compute indexes that need to be patched into existing code."""
         code = self.value
-        if is_function_code(code):
-            consts = code.co_consts[1:]
-        else:
-            consts = code.co_consts
+        consts = code.co_consts
 
         self.co_consts_start = len(self.builder.constants)
         self.builder.co_consts_start = self.co_consts_start
