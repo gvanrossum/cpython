@@ -4365,8 +4365,16 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         }
 
         case TARGET(LAZY_LOAD_CONSTANT): {
-            PyObject *value = GETITEM(co->co_pyc->consts, co->co_consts_start + oparg);
+            PyObject *value = GETITEM(consts, oparg);
             if (value != NULL) {
+                Py_INCREF(value);
+                PUSH(value);
+                DISPATCH();
+            }
+            value = GETITEM(co->co_pyc->consts, co->co_consts_start + oparg);
+            if (value != NULL) {
+                Py_INCREF(value);
+                PyTuple_SET_ITEM(consts, oparg, value);
                 Py_INCREF(value);
                 PUSH(value);
                 DISPATCH();
