@@ -1894,7 +1894,7 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
-    uint32_t offset = LAZY_CO_NAME_OFFSET(pyc, index);
+    uint32_t offset = LAZY_STRING_OFFSET(pyc, index);
     PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
     return res;
 }
@@ -2101,7 +2101,7 @@ eval_constant(PyCodeObject *code, int index)
         Py_INCREF(result);
         return result;
     }
-    uint32_t offset = LAZY_CO_CONST_OFFSET(pyc, index);
+    uint32_t offset = LAZY_CONST_OFFSET(pyc, index);
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;
