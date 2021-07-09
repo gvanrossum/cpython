@@ -158,7 +158,7 @@ class TestNewPyc(unittest.TestCase):
 
     def test_speed_many_constants(self):
         body = ["    a0, b0 = 1, 1"]
-        for i in range(10): # TODO: increase this when EXTENDED_ARGS works
+        for i in range(300):
             body.append(f"    a{i+1}, b{i+1} = b{i}+{i}, a{i}+{float(i)}")
         self.do_test_speed('\n'.join(body), "many_locals")
 
