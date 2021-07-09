@@ -1894,13 +1894,9 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
-    if (0 <= index && index < pyc->n_strings) {
-        uint32_t offset = LAZY_CO_NAME_OFFSET(pyc, index);
-        PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
-        return res;
-    }
-    PyErr_Format(PyExc_SystemError, "String index %d out of range", index);
-    return NULL;
+    uint32_t offset = LAZY_CO_NAME_OFFSET(pyc, index);
+    PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
+    return res;
 }
 
 PyObject *
