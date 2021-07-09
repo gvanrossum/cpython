@@ -1116,10 +1116,9 @@ free_activation_record(PyThreadState *tstate, struct activation_record *rec)
 }
 
 static void
-get_subroutine_info(PyThreadState *tstate, PyCodeObject *code, uint32_t index,
+get_subroutine_info(struct lazy_pyc *pyc, uint32_t index,
                     _Py_CODEUNIT **p_instrs, int *p_stacksize)
 {
-    struct lazy_pyc *pyc = code->co_pyc;
     assert(pyc);
     uint32_t offset = LAZY_CO_CONST_OFFSET(pyc, index);
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
@@ -4383,7 +4382,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
             _Py_CODEUNIT *instrs;
             int stacksize;
             uint32_t index = oparg + co->co_consts_start;
-            get_subroutine_info(tstate, co, index, &instrs, &stacksize);
+            get_subroutine_info(co->co_pyc, index, &instrs, &stacksize);
 
             struct activation_record *rec =
                 new_activation_record(tstate, stacksize);
