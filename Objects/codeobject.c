@@ -1894,21 +1894,9 @@ _PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset)
 PyObject *
 _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 {
-    //fprintf(stderr, "   >>>>    _PyHydra_UnicodeFromIndex index = %d pyc->n_strings=%d\n", index, pyc->n_strings);
     if (0 <= index && index < pyc->n_strings) {
-        uint32_t offset = pyc->string_offsets[index];
-        //fprintf(stderr, "[1]         offset = %d\n", offset);
-        if (offset & 1) {
-            index = offset >> 1;
-            assert(0 <= index && index < pyc->n_strings);
-            offset = pyc->string_offsets[index];
-            assert(!(offset & 1));
-            // fprintf(stderr, "[2]         offset = %d\n", offset);
-        }
+        uint32_t offset = LAZY_CO_NAME_OFFSET(pyc, index);
         PyObject *res = _PyHydra_UnicodeFromOffset(pyc, offset);
-        //PyObject *repr = PyObject_Repr(res);
-        //fprintf(stderr, "res = %s\n", PyUnicode_AsUTF8(repr));
-        //Py_XDECREF(repr);
         return res;
     }
     PyErr_Format(PyExc_SystemError, "String index %d out of range", index);
@@ -2117,11 +2105,7 @@ eval_constant(PyCodeObject *code, int index)
         Py_INCREF(result);
         return result;
     }
-    uint32_t offset = pyc->const_offsets[index];
-    if (offset & 1) {
-        index = offset >> 1;
-        offset = pyc->const_offsets[index];
-    }
+    uint32_t offset = LAZY_CO_CONST_OFFSET(pyc, index);
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;

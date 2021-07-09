@@ -389,6 +389,24 @@ struct lazy_pyc {
     uint32_t *blob_offsets;
 };
 
+static /*inline*/ uint32_t
+lazy_index_to_offset(uint32_t *offsets, int n_offsets, uint32_t index)
+{
+    uint32_t offset = offsets[index];
+    if (offset & 1) {
+        index = offset >> 1;
+        assert(0 <= index && index < n_offsets);
+        offset = offsets[index];
+        assert(!(offset & 1));
+    }
+    return offset;
+}
+
+#define LAZY_CO_CONST_OFFSET(pyc, index) \
+        lazy_index_to_offset(pyc->const_offsets, pyc->n_consts, index)
+#define LAZY_CO_NAME_OFFSET(pyc, index) \
+        lazy_index_to_offset(pyc->string_offsets, pyc->n_strings, index)
+
 static /*inline*/ unsigned char *
 lazy_get_pointer(struct lazy_pyc *pyc, uint32_t offset)
 {
