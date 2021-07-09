@@ -274,8 +274,6 @@ def rewritten_bytecode(code: types.CodeType, builder: Builder) -> bytes:
         oparg: int
         opcode, oparg = instrs[i : i + 2]
         if opcode == LOAD_CONST:
-            if i >= 2 and instrs[i - 2] == EXTENDED_ARG:
-                pass # oparg = oparg | (instrs[i - 1] << 8)
             value = code.co_consts[oparg]
             if is_immediate(value):
                 if type(value) == int:
