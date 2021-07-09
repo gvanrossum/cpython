@@ -2118,6 +2118,10 @@ eval_constant(PyCodeObject *code, int index)
         return result;
     }
     uint32_t offset = pyc->const_offsets[index];
+    if (offset & 1) {
+        index = offset >> 1;
+        offset = pyc->const_offsets[index];
+    }
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;
