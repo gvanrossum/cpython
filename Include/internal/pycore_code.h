@@ -403,9 +403,9 @@ lazy_index_to_offset(uint32_t *offsets, int n_offsets, uint32_t index)
     return offset;
 }
 
-#define LAZY_CO_CONST_OFFSET(pyc, index) \
+#define LAZY_CONST_OFFSET(pyc, index) \
         lazy_index_to_offset(pyc->const_offsets, pyc->n_consts, index)
-#define LAZY_CO_NAME_OFFSET(pyc, index) \
+#define LAZY_STRING_OFFSET(pyc, index) \
         lazy_index_to_offset(pyc->string_offsets, pyc->n_strings, index)
 
 static /*inline*/ unsigned char *

@@ -1120,7 +1120,7 @@ get_subroutine_info(struct lazy_pyc *pyc, uint32_t index,
                     _Py_CODEUNIT **p_instrs, int *p_stacksize)
 {
     assert(pyc);
-    uint32_t offset = LAZY_CO_CONST_OFFSET(pyc, index);
+    uint32_t offset = LAZY_CONST_OFFSET(pyc, index);
     uint32_t *pointer = (uint32_t *)lazy_get_pointer(pyc, offset);
     uint32_t stacksize = *pointer++;
     Py_ssize_t n_instrs = *pointer++;
