@@ -90,7 +90,7 @@ class TestNewPyc(unittest.TestCase):
             fco = ns[f"f{num}"]
             assert (num, f"hello {num}") in fco.__code__.co_consts
 
-    def do_test_speed(self, body, test_name, call=False):
+    def do_test_speed(self, body, call=False):
         NUM_FUNCS = 100
         functions = [
             f"def f{num}(a, b):\n{body}"
@@ -102,10 +102,11 @@ class TestNewPyc(unittest.TestCase):
                 for num in range(NUM_FUNCS)]
             )
         source = "\n\n".join(functions)
-        self.do_test_speed_for_source(source, test_name)
+        self.do_test_speed_for_source(source)
 
-    def do_test_speed_for_source(self, source, test_name):
-        print(f"Starting {test_name} speed test")
+    def do_test_speed_for_source(self, source):
+        print()
+        print(f"Starting speed test: {self._testMethodName}")
         def helper(data, label):
             t0 = time.perf_counter()
             codes = []
@@ -138,29 +139,29 @@ class TestNewPyc(unittest.TestCase):
 
     def test_speed_few_locals(self):
         body = "    a, b = b, a\n"*100
-        self.do_test_speed(body, "few_locals")
+        self.do_test_speed(body)
 
     def test_speed_few_locals_with_call(self):
         body = "    a, b = b, a\n"*100
-        self.do_test_speed(body, "few_locals_with_call", call=True)
+        self.do_test_speed(body, call=True)
 
     def test_speed_many_locals(self):
         body = ["    a0, b0 = 1, 1"]
         for i in range(300):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
-        self.do_test_speed('\n'.join(body), "many_locals")
+        self.do_test_speed('\n'.join(body))
 
     def test_speed_many_locals_with_call(self):
         body = ["    a0, b0 = 1, 1"]
         for i in range(100):
             body.append(f"    a{i+1}, b{i+1} = b{i}, a{i}")
-        self.do_test_speed('\n'.join(body), "many_locals_with_call", call=True)
+        self.do_test_speed('\n'.join(body), call=True)
 
     def test_speed_many_constants(self):
         body = ["    a0, b0 = 1, 1"]
         for i in range(300):
             body.append(f"    a{i+1}, b{i+1} = b{i}+{i}, a{i}+{float(i)}")
-        self.do_test_speed('\n'.join(body), "many_locals")
+        self.do_test_speed('\n'.join(body))
 
     def test_speed_many_globals(self):
         NUM_FUNCS = 100
@@ -174,7 +175,7 @@ class TestNewPyc(unittest.TestCase):
             for g_index in range(GLOBALS_PER_FUNC):
                 source.append(f"        a_{f_index}_{g_index}+\\")
             source.append(f"        0")
-        self.do_test_speed_for_source('\n'.join(source), "many_globals")
+        self.do_test_speed_for_source('\n'.join(source))
 
 
 if __name__ == "__main__":
