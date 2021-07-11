@@ -389,7 +389,7 @@ struct lazy_pyc {
     uint32_t *blob_offsets;
 };
 
-static /*inline*/ uint32_t
+static inline uint32_t
 lazy_index_to_offset(uint32_t *offsets, int n_offsets, uint32_t index)
 {
     assert(0 <= index && index < n_offsets);
@@ -408,7 +408,7 @@ lazy_index_to_offset(uint32_t *offsets, int n_offsets, uint32_t index)
 #define LAZY_STRING_OFFSET(pyc, index) \
         lazy_index_to_offset(pyc->string_offsets, pyc->n_strings, index)
 
-static /*inline*/ unsigned char *
+static inline unsigned char *
 lazy_get_pointer(struct lazy_pyc *pyc, uint32_t offset)
 {
     char *base = (char *) pyc->header;
