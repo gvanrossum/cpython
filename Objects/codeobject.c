@@ -1569,15 +1569,16 @@ code_getattr(PyObject *self, PyObject *attr)
             for (int i = 0; i < n; i++) {
                 PyObject *name = PyTuple_GET_ITEM(names, i);
                 if (name == NULL) {
-                    name = _PyHydrate_LoadName(code->co_pyc,
-                                               code->co_strings_start + i);
+                    name = _PyHydra_LoadName(code->co_pyc,
+                                             code->co_strings_start + i);
                     if (name == NULL) {
                         return NULL;
                     }
                     if (PyTuple_GET_ITEM(names, i) == NULL) {
-                        if (PyTuple_SetItem(names, i, name) == -1) {
-                            return NULL;
-                        }
+                        PyTuple_SET_ITEM(names, i, name);
+                    }
+                    else {
+                        Py_DECREF(name);
                     }
                 }
             }
@@ -1595,9 +1596,10 @@ code_getattr(PyObject *self, PyObject *attr)
                         return NULL;
                     }
                     if (PyTuple_GET_ITEM(consts, i) == NULL) {
-                        if (PyTuple_SetItem(consts, i, c) == -1) {
-                            return NULL;
-                        }
+                        PyTuple_SET_ITEM(consts, i, c);
+                    }
+                    else {
+                        Py_DECREF(c);
                     }
                 }
             }
@@ -1900,14 +1902,25 @@ _PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index)
 }
 
 PyObject *
-_PyHydrate_LoadName(struct lazy_pyc *pyc, uint32_t index)
+_PyHydra_LoadName(struct lazy_pyc *pyc, uint32_t index)
 {
     PyObject *name = PyTuple_GET_ITEM(pyc->names, index);
     if (name != NULL) {
         Py_INCREF(name);
         return name;
     }
-    name = _PyHydra_UnicodeFromIndex(pyc, index);
+    // Handle redirects explicitly
+    uint32_t offset = pyc->string_offsets[index];
+    if (offset & 1) {
+        index = offset >> 1;
+        name = PyTuple_GET_ITEM(pyc->names, index);
+        if (name != NULL) {
+           Py_INCREF(name);
+            return name;
+        }
+        offset = pyc->string_offsets[index];
+    }
+    name = _PyHydra_UnicodeFromOffset(pyc, offset);
     if (name == NULL) {
         return NULL;
     }
@@ -1987,10 +2000,10 @@ _PyCode_Hydrate(PyCodeObject *code)
     if (docstring == NULL) {
         return NULL;
     }
-    code->co_linetable = _PyHydra_BytesFromIndex(pyc, template->linetable);
-    if (code->co_linetable == NULL) {
-        return NULL;
-    }
+    // code->co_linetable = _PyHydra_BytesFromIndex(pyc, template->linetable);
+    // if (code->co_linetable == NULL) {
+    //     return NULL;
+    // }
     code->co_exceptiontable = _PyHydra_BytesFromIndex(pyc, template->exceptiontable);
     if (code->co_exceptiontable == NULL) {
         return NULL;
@@ -2012,11 +2025,12 @@ _PyCode_Hydrate(PyCodeObject *code)
     }
     if (n_localsplus) {
         for (uint32_t i = 0; i < n_localsplus; i++) {
-            PyObject *name = _PyHydra_UnicodeFromIndex(pyc, *pointer++);
+            uint32_t index = *pointer++;
+            PyObject *name = _PyHydra_LoadName(pyc, index);
             if (name == NULL) {
                 return NULL;
             }
-            PyTuple_SetItem(code->co_localsplusnames, i, name);
+            PyTuple_SET_ITEM(code->co_localsplusnames, i, name);
         }
         code->co_localspluskinds =
             PyBytes_FromStringAndSize((char *)pointer, n_localsplus);

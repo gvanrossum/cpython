@@ -433,7 +433,7 @@ PyObject *_PyHydra_BytesFromOffset(struct lazy_pyc *pyc, uint32_t offset);
 PyObject *_PyHydra_BytesFromIndex(struct lazy_pyc *pyc, uint32_t index);
 PyObject *_PyHydra_UnicodeFromOffset(struct lazy_pyc *pyc, uint32_t offset);
 PyObject *_PyHydra_UnicodeFromIndex(struct lazy_pyc *pyc, int index);
-PyObject *_PyHydrate_LoadName(struct lazy_pyc *pyc, uint32_t index);
+PyObject *_PyHydra_LoadName(struct lazy_pyc *pyc, uint32_t index);
 
 #ifdef __cplusplus
 }

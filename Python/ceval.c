@@ -1459,7 +1459,7 @@ eval_frame_handle_pending(PyThreadState *tstate)
 
 #define ENSURE_HYDRATED_NAME(name, names, oparg, co) \
     if (name == NULL) { \
-        name = _PyHydrate_LoadName(co->co_pyc, co->co_strings_start + oparg); \
+        name = _PyHydra_LoadName(co->co_pyc, co->co_strings_start + oparg); \
         if (name == NULL) { \
             goto error; \
         } \
@@ -2924,7 +2924,7 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
 
                 /* namespace 1: globals */
                 if (name == NULL) {
-                    name = _PyHydrate_LoadName(co->co_pyc, oparg);
+                    name = _PyHydra_LoadName(co->co_pyc, oparg);
                     if (name == NULL) {
                         goto error;
                     }
@@ -6590,7 +6590,9 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
             PyObject *names = _PyFrame_GetCode(f)->co_names;
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                name = _PyHydrate_LoadName(PyFrame_GetCode(f)->co_pyc, PyFrame_GetCode(f)->co_strings_start + oparg);
+                PyCOdeObject *code = PyFrame_GetCode(f);
+                name = _PyHydra_LoadName(
+                    code->co_pyc, code->co_strings_start + oparg);
                 if (name == NULL) {
                     Py_DECREF(v);
                     return NULL;
