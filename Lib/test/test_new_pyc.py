@@ -1,6 +1,7 @@
 """Test for new PYC format"""
 
 import dis
+import gc
 import marshal
 import time
 import unittest
@@ -104,6 +105,10 @@ class TestNewPycSpeed(unittest.TestCase):
             print(f"{t:25}{r[0]:15.3f}{r[1]:15.3f}")
         print()
         cls.results = {}
+
+    def setUp(self):
+        while gc.collect():
+            pass
 
     def do_test_speed(self, body, call=False):
         NUM_FUNCS = 100
