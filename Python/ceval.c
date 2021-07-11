@@ -6590,7 +6590,7 @@ unicode_concatenate(PyThreadState *tstate, PyObject *v, PyObject *w,
             PyObject *names = _PyFrame_GetCode(f)->co_names;
             PyObject *name = GETITEM(names, oparg);
             if (name == NULL) {
-                PyCOdeObject *code = PyFrame_GetCode(f);
+                PyCodeObject *code = PyFrame_GetCode(f);
                 name = _PyHydra_LoadName(
                     code->co_pyc, code->co_strings_start + oparg);
                 if (name == NULL) {
