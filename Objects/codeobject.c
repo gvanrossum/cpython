@@ -1924,6 +1924,7 @@ _PyHydra_LoadName(struct lazy_pyc *pyc, uint32_t index)
     if (name == NULL) {
         return NULL;
     }
+    PyUnicode_InternInPlace(&name);
     Py_INCREF(name);
     PyTuple_SET_ITEM(pyc->names, index, name);
     return name;
