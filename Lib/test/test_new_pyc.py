@@ -90,6 +90,21 @@ class TestNewPyc(unittest.TestCase):
             fco = ns[f"f{num}"]
             assert (num, f"hello {num}") in fco.__code__.co_consts
 
+
+class TestNewPycSpeed(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.results = {}
+
+    @classmethod
+    def tearDownClass(cls):
+        print(f"{' ':25}{'load+exec':>15}{'steady state':>15}")
+        for t, r in sorted(cls.results.items(), key=lambda kv: -kv[1][0]):
+            print(f"{t:25}{r[0]:15.3f}{r[1]:15.3f}")
+        print()
+        cls.results = {}
+
     def do_test_speed(self, body, call=False):
         NUM_FUNCS = 100
         functions = [
@@ -108,6 +123,7 @@ class TestNewPyc(unittest.TestCase):
         print()
         print(f"Starting speed test: {self._testMethodName}")
         def helper(data, label):
+            timings = {}
             t0 = time.perf_counter()
             codes = []
             for _ in range(1000):
@@ -115,27 +131,43 @@ class TestNewPyc(unittest.TestCase):
                 codes.append(code)
             t1 = time.perf_counter()
             print(f"{label} load: {t1-t0:.3f}")
+            timings['load'] = t1-t0
+            timings['execs'] = []
             for i in range(4):
                 t3 = time.perf_counter()
                 for code in codes:
                     exec(code, {})
                 t4 = time.perf_counter()
                 print(f"{label} exec #{i+1}: {t4-t3:.3f}")
+                timings['execs'].append(t4-t3)
             print(f"       {label} total: {t4-t0:.3f}")
-            return t4 - t0
+            return timings
 
         code = compile(source, "<old>", "exec")
         data = marshal.dumps(code)
-        tc = helper(data, "Classic")
+        classic_timings = helper(data, "Classic")
 
         t0 = time.perf_counter()
         data = pyco.serialize_source(source, "<new>")
         t1 = time.perf_counter()
         print(f"PYCO: {t1-t0:.3f}")
         assert data.startswith(b"PYC.")
-        tn = helper(data, "New PYC")
-        if tc and tn:
-            print(f"Classic-to-new ratio: {tc/tn:.2f} (new is {100*(tc/tn-1):.0f}% faster)")
+        new_timings = helper(data, "New PYC")
+
+        if classic_timings and new_timings:
+            def comparison(title, f):
+                tc = f(classic_timings)
+                tn = f(new_timings)
+                print(f">> {title} ratio: {tc/tn:.2f} "
+                      f"(new is {100*(tc/tn-1):.0f}% faster)")
+                return tc/tn
+
+            print("Classic-to-new comparison:")
+            self.results[self._testMethodName.lstrip('test_speed_')] = [
+                comparison('load+exec', lambda t: t['load'] + t['execs'][0]),
+                comparison('steady state', lambda t: t['execs'][-1])
+            ]
+            print()
 
     def test_speed_few_locals(self):
         body = "    a, b = b, a\n"*100
