@@ -164,7 +164,7 @@ class TestNewPycSpeed(unittest.TestCase):
                 tc = f(classic_timings)
                 tn = f(new_timings)
                 print(f">> {title} ratio: {tn/tc:.2f} "
-                      f"(new is {100*(tn/tc-1):.0f}% faster)")
+                      f"(new is {100*(tc/tn-1):.0f}% faster)")
                 return tn/tc
 
             print("Classic-to-new comparison:")
