@@ -3,8 +3,9 @@ import gc
 import itertools
 import marshal
 import time
-from collections import namedtuple
 
+from argparse import ArgumentParser
+from collections import namedtuple
 from test import test_tools
 
 test_tools.skip_if_missing("pyco")
@@ -170,8 +171,8 @@ def run_tests():
     return results
 
 
-def write_csv(results: dict, filename: str = "perf_micro.csv"):
-    with open("perf_micro.csv", "w", newline="") as f:
+def write_csv(results: dict, filename: str):
+    with open(filename, "w", newline="") as f:
         writer = None
         for p, r in results.items():
             if writer is None:
@@ -179,6 +180,7 @@ def write_csv(results: dict, filename: str = "perf_micro.csv"):
                 csv.writer(f).writerow(fieldnames)
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writerow(p._asdict() | r)
+    print(f"Results were written to {filename}")
 
 
 def print_summary(results: dict):
@@ -190,6 +192,12 @@ def print_summary(results: dict):
 
 
 if __name__ == "__main__":
+    parser = ArgumentParser(description="Run pyco perf micro-benchmarks.")
+    parser.add_argument('-f', help='file for csv output')
+    args = parser.parse_args()
+    filename = getattr(args, 'f', None)
+
     results = run_tests()
-    write_csv(results)
+    if filename is not None:
+        write_csv(results, filename)
     print_summary(results)
