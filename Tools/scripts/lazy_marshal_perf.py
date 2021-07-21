@@ -17,16 +17,18 @@ def speed_comparison(source: str, test_name: str):
     print()
     print(f"Starting speed test: {test_name}")
 
-    def helper(data, label, lazy):
-        timings = {}
-        t0 = time.perf_counter()
+    def load_helper(data, label, timings, lazy):
         codes = []
+        t0 = time.perf_counter()
         for _ in range(1000):
             code = marshal.loads(data, lazy=lazy)
             codes.append(code)
         t1 = time.perf_counter()
         print(f"{label} load: {t1-t0:.3f}")
         timings["load"] = t1 - t0
+        return codes
+
+    def exec_helper(codes, label, timings):
         timings["execs"] = []
         for i in range(4):
             t3 = time.perf_counter()
@@ -35,14 +37,27 @@ def speed_comparison(source: str, test_name: str):
             t4 = time.perf_counter()
             print(f"{label} exec #{i+1}: {t4-t3:.3f}")
             timings["execs"].append(t4 - t3)
+
+    def helper(data, label, timings, lazy):
+        t0 = time.perf_counter()
+        codes = load_helper(data, label, timings, lazy)
+        exec_helper(codes, label, timings)
+        t4 = time.perf_counter()
         print(f"       {label} total: {t4-t0:.3f}")
         return timings
 
     code = compile(source, "<old>", "exec")
     data = marshal.dumps(code)
-    classic_timings = helper(data, "Classic", lazy=False)
 
-    new_timings = helper(data, "Lazy", lazy=True)
+    # new_timings = helper(data, "Lazy", new_timings, lazy=True)
+    # classic_timings = helper(data, "Classic", classic_timings, lazy=False)
+
+    new_timings = {}
+    classic_timings = {}
+    classic_codes = load_helper(data, "Classic", classic_timings, lazy=False)
+    lazy_codes = load_helper(data, "Lazy", new_timings, lazy=True)
+    exec_helper(classic_codes, "Classic", classic_timings)
+    exec_helper(lazy_codes, "Lazy", new_timings)
 
     if classic_timings and new_timings:
 
