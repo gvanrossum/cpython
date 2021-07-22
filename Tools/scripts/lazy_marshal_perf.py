@@ -165,13 +165,13 @@ def run_tests():
     results = {}
     for params in itertools.product(
         [1000],  # num_reps
-        [1000],  # num_funcs
-        [500],  # func_length
-        [10],  # num_vars
-        [False],  # is_locals
-        [True],  # is_unique_names
-        [False],  # is_vary_constants
-        [False],  # is_call
+        [100],  # num_funcs
+        [100],  # func_length
+        [10, 100],  # num_vars
+        [True, False],  # is_locals
+        [True, False],  # is_unique_names
+        [True, False],  # is_vary_constants
+        [True, False],  # is_call
     ):
         p = SpeedTestParams(*params)
         while gc.collect():
