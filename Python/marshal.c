@@ -1724,6 +1724,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
     rf.refs = PyList_New(0);
     if (rf.refs == NULL)
         return NULL;
+    PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
     result = read_object(&rf);
@@ -1747,6 +1748,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
     rf.refs = PyList_New(0);
     if (rf.refs == NULL)
         return NULL;
+    PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
     result = read_object(&rf);
@@ -1881,6 +1883,7 @@ marshal_load(PyObject *module, PyObject *file)
         rf.ptr = rf.end = NULL;
         rf.buf = NULL;
         if ((rf.refs = PyList_New(0)) != NULL) {
+            PyObject_GC_UnTrack(rf.refs);
             rf.refs_pos = 0;
             rf.ctx = NULL;
             result = read_object(&rf);
@@ -1945,6 +1948,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes, int lazy)
     rf.depth = 0;
     if ((rf.refs = PyList_New(0)) == NULL)
         return NULL;
+    PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
     if (lazy < 0)
