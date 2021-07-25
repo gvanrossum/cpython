@@ -1279,6 +1279,7 @@ order (MRO) for bases """
                 def __eq__(self, other):
                     return False
             g = G()
+            g.__eq__.__code__.co_code  # Hydrate code object
             orig_objects = len(gc.get_objects())
             for i in range(10):
                 g==g
