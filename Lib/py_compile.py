@@ -151,6 +151,9 @@ def compile(file, cfile=None, dfile=None, doraise=False, optimize=-1,
             else:
                 sys.stderr.write(py_exc.msg + '\n')
         return
+    if dfile is not None:
+        import _imp
+        _imp._fix_co_filename(code, file)
     try:
         dirname = os.path.dirname(cfile)
         if dirname:
