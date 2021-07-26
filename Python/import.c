@@ -824,28 +824,6 @@ PyImport_ExecCodeModuleObject(PyObject *name, PyObject *co, PyObject *pathname,
 
 
 static void
-update_code_filenames(PyCodeObject *co, PyObject *oldname, PyObject *newname)
-{
-    PyObject *constants, *tmp;
-    Py_ssize_t i, n;
-
-    if (PyUnicode_Compare(co->co_filename, oldname))
-        return;
-
-    Py_INCREF(newname);
-    Py_XSETREF(co->co_filename, newname);
-
-    constants = co->co_consts;
-    n = constants != NULL ? PyTuple_GET_SIZE(constants) : 0;
-    for (i = 0; i < n; i++) {
-        tmp = PyTuple_GET_ITEM(constants, i);
-        if (PyCode_Check(tmp))
-            update_code_filenames((PyCodeObject *)tmp,
-                                  oldname, newname);
-    }
-}
-
-static void
 update_compiled_module(PyCodeObject *co, PyObject *newname)
 {
     PyObject *oldname;
@@ -855,7 +833,7 @@ update_compiled_module(PyCodeObject *co, PyObject *newname)
 
     oldname = co->co_filename;
     Py_INCREF(oldname);
-    update_code_filenames(co, oldname, newname);
+    _PyCode_Update_Filenames(co, oldname, newname);
     Py_DECREF(oldname);
 }
 
