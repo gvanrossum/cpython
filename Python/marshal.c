@@ -325,9 +325,6 @@ w_ref(PyObject *v, char *flag, WFILE *p)
     if (p->version < 3 || p->hashtable == NULL)
         return 0; /* not writing object references */
 
-    if (PyCode_Check(v))
-        return 0; /* never sharing code objects */
-
     /* if it has only one reference, it definitely isn't shared */
     if (Py_REFCNT(v) == 1)
         return 0;
@@ -1480,10 +1477,9 @@ r_object(RFILE *p)
             struct _PyCodeConstructor con = { 0 };  // All zeros
             Py_ssize_t first_ref = -1;
 
-            if (flag != 0) {
-                PyErr_BadArgument();
-                return NULL;
-            }
+            idx = r_ref_reserve(flag, p);
+            if (idx < 0)
+                break;
 
             v = NULL;
 
@@ -1539,7 +1535,7 @@ r_object(RFILE *p)
 
             PyCodeObject *to_update = NULL;
 
-            if (p->ctx != NULL && p->ctx->code == NULL) {
+            if (flag == 0 && p->ctx != NULL && p->ctx->code == NULL) {
                 // Return a dehydrated code object
                 con.hydra_context = p->ctx;
                 con.hydra_offset = save_ptr - 1 - p->ctx->buf;  // Back up over typecode
@@ -1621,6 +1617,8 @@ r_object(RFILE *p)
                 }
             }
 
+            v = r_ref_insert(v, idx, flag, p);
+
           code_error:
             Py_XDECREF(code);
             Py_XDECREF(consts);
@@ -1646,13 +1644,17 @@ r_object(RFILE *p)
             PyErr_SetString(PyExc_ValueError, "bad marshal data (invalid reference)");
             break;
         }
+        // A dehydrated code object in refs is a placeholder.
+        // To find the real object we need to hydrate it
+        // (which updates refs in place).
+        // This may happen multiple times if it is deeply hidden.
         for (;;) {
             v = PyList_GET_ITEM(p->refs, n);
             if (!PyCode_Check(v))
                 break;
             PyCodeObject *code = (PyCodeObject *)v;
             if (_PyCode_IsHydrated(code)) {
-                printf("Not dehydrated!\n");
+                // printf("Not dehydrated!\n");
                 break;
             }
             // printf("It's a dehydrated code object! %s - %d - %s\n",
@@ -1666,7 +1668,7 @@ r_object(RFILE *p)
         if (v == NULL)
             break;
         if (v == Py_None) {
-            PyErr_SetString(PyExc_ValueError, "bad marshal data (invalid reference)");
+            PyErr_SetString(PyExc_ValueError, "bad marshal data (None in refs)");
             break;
         }
         Py_INCREF(v);
