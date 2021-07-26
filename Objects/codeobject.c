@@ -324,6 +324,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     co->co_name = con->name;
     Py_INCREF(con->qualname);
     co->co_qualname = con->qualname;
+
     co->co_flags = con->flags;
 
     Py_XINCREF(con->code);
@@ -420,6 +421,10 @@ _PyCode_New(struct _PyCodeConstructor *con)
         PyErr_NoMemory();
         return NULL;
     }
+    co->co_filename = NULL;
+    co->co_name = NULL;
+    co->co_qualname = NULL;
+
     init_code(co, con);
 
     return co;
@@ -442,7 +447,11 @@ _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
         con->columntable = Py_None;
     }
 
-    init_code(code, con);  // TODO: This leaks!
+    Py_XDECREF(code->co_filename);
+    Py_XDECREF(code->co_name);
+    Py_XDECREF(code->co_qualname);
+
+    init_code(code, con);
 
     return code;
 }
