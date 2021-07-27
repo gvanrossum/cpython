@@ -2,6 +2,7 @@
 
 #include "Python.h"
 
+#include "pycore_code.h"          // _PyCode_UpdateFilenames
 #include "pycore_import.h"        // _PyImport_BootstrapImp()
 #include "pycore_initconfig.h"
 #include "pycore_pyerrors.h"
