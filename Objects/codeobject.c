@@ -470,15 +470,14 @@ _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
     }
 
     PyObject *newname = code->co_filename;
-    Py_XDECREF(code->co_name);
-    Py_XDECREF(code->co_qualname);
+    Py_DECREF(code->co_name);
+    Py_DECREF(code->co_qualname);
 
     init_code(code, con);
 
-    if (newname) {
-        _PyCode_UpdateFilenames(code, code->co_filename, newname);
-        Py_DECREF(newname);
-    }
+    assert(newname);
+    _PyCode_UpdateFilenames(code, code->co_filename, newname);
+    Py_DECREF(newname);
 
     return code;
 }
