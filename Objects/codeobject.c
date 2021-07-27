@@ -431,7 +431,7 @@ _PyCode_New(struct _PyCodeConstructor *con)
 }
 
 void
-_PyCode_Update_Filenames(PyCodeObject *co, PyObject *oldname, PyObject *newname)
+_PyCode_UpdateFilenames(PyCodeObject *co, PyObject *oldname, PyObject *newname)
 {
     PyObject *constants, *tmp;
     Py_ssize_t i, n;
@@ -447,7 +447,7 @@ _PyCode_Update_Filenames(PyCodeObject *co, PyObject *oldname, PyObject *newname)
     for (i = 0; i < n; i++) {
         tmp = PyTuple_GET_ITEM(constants, i);
         if (PyCode_Check(tmp))
-            _PyCode_Update_Filenames((PyCodeObject *)tmp,
+            _PyCode_UpdateFilenames((PyCodeObject *)tmp,
                 oldname, newname);
     }
 }
@@ -476,7 +476,7 @@ _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
     init_code(code, con);
 
     if (newname) {
-        _PyCode_Update_Filenames(code, code->co_filename, newname);
+        _PyCode_UpdateFilenames(code, code->co_filename, newname);
         Py_DECREF(newname);
     }
 

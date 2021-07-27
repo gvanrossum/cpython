@@ -261,7 +261,7 @@ struct _PyCodeConstructor {
 PyAPI_FUNC(int) _PyCode_Validate(struct _PyCodeConstructor *);
 PyAPI_FUNC(PyCodeObject *) _PyCode_New(struct _PyCodeConstructor *);
 PyAPI_FUNC(PyCodeObject *) _PyCode_Update(struct _PyCodeConstructor *, PyCodeObject *);
-PyAPI_FUNC(void) _PyCode_Update_Filenames(PyCodeObject *co, PyObject *oldname, PyObject *newname);
+PyAPI_FUNC(void) _PyCode_UpdateFilenames(PyCodeObject *co, PyObject *oldname, PyObject *newname);
 
 
 /* Private API */

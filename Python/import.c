@@ -833,7 +833,7 @@ update_compiled_module(PyCodeObject *co, PyObject *newname)
 
     oldname = co->co_filename;
     Py_INCREF(oldname);
-    _PyCode_Update_Filenames(co, oldname, newname);
+    _PyCode_UpdateFilenames(co, oldname, newname);
     Py_DECREF(oldname);
 }
 
