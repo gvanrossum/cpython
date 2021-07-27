@@ -1574,15 +1574,14 @@ static Py_hash_t
 code_hash(PyCodeObject *co)
 {
     // Hash only fields that are set even on dehydrated code objects.
-    Py_hash_t h, h0, h1;
-    h0 = PyObject_Hash(co->co_qualname);
-    if (h0 == -1) return -1;
-    h1 = PyObject_Hash(co->co_filename);
-    if (h1 == -1) return -1;
-    h = h0 ^ h1 ^
+    Py_hash_t h0 = PyObject_Hash(co->co_qualname);
+    if (h0 == -1)
+        return -1;
+    Py_hash_t h = h0 ^
         co->co_argcount ^ co->co_posonlyargcount ^ co->co_kwonlyargcount ^
         co->co_flags ^ co->co_firstlineno;
-    if (h == -1) h = -2;
+    if (h == -1)
+        h = -2;
     return h;
 }
 
