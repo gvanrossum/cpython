@@ -430,6 +430,28 @@ _PyCode_New(struct _PyCodeConstructor *con)
     return co;
 }
 
+void
+_PyCode_UpdateFilenames(PyCodeObject *co, PyObject *oldname, PyObject *newname)
+{
+    PyObject *constants, *tmp;
+    Py_ssize_t i, n;
+
+    if (PyUnicode_Compare(co->co_filename, oldname))
+        return;
+
+    Py_INCREF(newname);
+    Py_XSETREF(co->co_filename, newname);
+
+    constants = co->co_consts;
+    n = constants != NULL ? PyTuple_GET_SIZE(constants) : 0;
+    for (i = 0; i < n; i++) {
+        tmp = PyTuple_GET_ITEM(constants, i);
+        if (PyCode_Check(tmp))
+            _PyCode_UpdateFilenames((PyCodeObject *)tmp,
+                oldname, newname);
+    }
+}
+
 PyCodeObject *
 _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
 {
@@ -447,11 +469,15 @@ _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
         con->columntable = Py_None;
     }
 
-    Py_XDECREF(code->co_filename);
-    Py_XDECREF(code->co_name);
-    Py_XDECREF(code->co_qualname);
+    PyObject *newname = code->co_filename;
+    Py_DECREF(code->co_name);
+    Py_DECREF(code->co_qualname);
 
     init_code(code, con);
+
+    assert(newname);
+    _PyCode_UpdateFilenames(code, code->co_filename, newname);
+    Py_DECREF(newname);
 
     return code;
 }
