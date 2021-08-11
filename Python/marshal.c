@@ -397,6 +397,16 @@ w_object(PyObject *v, WFILE *p)
 }
 
 static void
+w_fake_object(const char *ptr, int size, WFILE *p)
+{
+    w_byte(TYPE_STRING, p);
+    w_pstring(ptr, size, p);
+
+}
+
+#define W_FAKE_OBJECT(prefix, p) w_fake_object(prefix##_ptr, prefix##_size, p)
+
+static void
 w_complex_object(PyObject *v, char flag, WFILE *p)
 {
     Py_ssize_t i, n;
@@ -563,9 +573,9 @@ w_complex_object(PyObject *v, char flag, WFILE *p)
         w_object(co->co_names, p);
         w_object(co->co_localsplusnames, p);
         w_object(co->co_localspluskinds, p);
-        w_object(co->co_linetable, p);
-        w_object(co->co_endlinetable, p);
-        w_object(co->co_columntable, p);
+        W_FAKE_OBJECT(co->co_linetable, p);
+        W_FAKE_OBJECT(co->co_endlinetable, p);
+        W_FAKE_OBJECT(co->co_columntable, p);
         w_object(co->co_exceptiontable, p);
         w_object(co->co_consts, p);
         w_backpatch(p, start_pos, start_nrefs);
@@ -1080,6 +1090,8 @@ r_ref(PyObject *o, int flag, RFILE *p)
     return o;
 }
 
+static const char *r_fake_object(RFILE *p, int *p_size);
+
 static PyObject *
 r_object(RFILE *p)
 {
@@ -1469,9 +1481,12 @@ r_object(RFILE *p)
             PyObject *names = NULL;
             PyObject *localsplusnames = NULL;
             PyObject *localspluskinds = NULL;
-            PyObject *linetable = NULL;
-            PyObject* endlinetable = NULL;
-            PyObject* columntable = NULL;
+            const char *linetable_ptr = NULL;
+            const char *endlinetable_ptr = NULL;
+            const char *columntable_ptr = NULL;
+            int linetable_size = 0;
+            int endlinetable_size = 0;
+            int columntable_size = 0;
             PyObject *exceptiontable = NULL;
             // TODO: Optimization: read most valules directly into 'con'
             struct _PyCodeConstructor con = { 0 };  // All zeros
@@ -1566,14 +1581,14 @@ r_object(RFILE *p)
                 localspluskinds = r_object(p);
                 if (localspluskinds == NULL)
                     goto code_error;
-                linetable = r_object(p);
-                if (linetable == NULL)
+                linetable_ptr = r_fake_object(p, &linetable_size);
+                if (linetable_ptr == NULL)
                     goto code_error;
-                endlinetable = r_object(p);
-                if (endlinetable == NULL)
+                endlinetable_ptr = r_fake_object(p, &endlinetable_size);
+                if (endlinetable_ptr == NULL)
                     goto code_error;
-                columntable = r_object(p);
-                if (columntable == NULL)
+                columntable_ptr = r_fake_object(p, &columntable_size);
+                if (columntable_ptr == NULL)
                     goto code_error;
                 exceptiontable = r_object(p);
                 if (exceptiontable == NULL)
@@ -1587,9 +1602,14 @@ r_object(RFILE *p)
                 con.names = names;
                 con.localsplusnames = localsplusnames;
                 con.localspluskinds = localspluskinds;
-                con.linetable = linetable;
-                con.endlinetable = endlinetable;
-                con.columntable = columntable;
+
+                con.linetable_ptr = linetable_ptr;
+                con.endlinetable_ptr = endlinetable_ptr;
+                con.columntable_ptr = columntable_ptr;
+                con.linetable_size = linetable_size;
+                con.endlinetable_size = endlinetable_size;
+                con.columntable_size = columntable_size;
+
                 con.exceptiontable = exceptiontable;
 
                 if (_PyCode_Validate(&con) < 0) {
@@ -1628,9 +1648,9 @@ r_object(RFILE *p)
             Py_XDECREF(filename);
             Py_XDECREF(name);
             Py_XDECREF(qualname);
-            Py_XDECREF(linetable);
-            Py_XDECREF(endlinetable);
-            Py_XDECREF(columntable);
+            // Py_XDECREF(linetable);
+            // Py_XDECREF(endlinetable);
+            // Py_XDECREF(columntable);
             Py_XDECREF(exceptiontable);
         }
         retval = v;
@@ -1684,6 +1704,22 @@ r_object(RFILE *p)
     }
     p->depth--;
     return retval;
+}
+
+static const char *
+r_fake_object(RFILE *p, int *p_size)
+{
+    // TODO TODO avoid the copy!!!
+    PyObject *obj = r_object(p);
+    if (obj == NULL)
+        return NULL;
+    if (!PyBytes_CheckExact(obj)) {
+        PyErr_BadArgument();
+        return NULL;
+    }
+    // TODO TODO: check size
+    *p_size = (int)PyBytes_GET_SIZE(obj);
+    return PyBytes_AS_STRING(obj);  // TODO TODO: Leaks obj!
 }
 
 static PyObject *

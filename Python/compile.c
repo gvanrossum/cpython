@@ -7428,6 +7428,11 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
     }
     compute_localsplus_info(c, nlocalsplus, localsplusnames, localspluskinds);
 
+    // TODO TODO Don't leak these, find a way to incorporate them in the object
+    Py_INCREF(a->a_lnotab);
+    Py_INCREF(a->a_enotab);
+    Py_INCREF(a->a_cnotab);
+
     struct _PyCodeConstructor con = {
         .filename = c->c_filename,
         .name = c->u->u_name,
@@ -7436,9 +7441,14 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
 
         .code = a->a_bytecode,
         .firstlineno = c->u->u_firstlineno,
-        .linetable = a->a_lnotab,
-        .endlinetable = a->a_enotab,
-        .columntable = a->a_cnotab,
+
+        .linetable_ptr = PyBytes_AS_STRING(a->a_lnotab),
+        .endlinetable_ptr = PyBytes_AS_STRING(a->a_enotab),
+        .columntable_ptr = PyBytes_AS_STRING(a->a_cnotab),
+
+        .linetable_size = (int)PyBytes_GET_SIZE(a->a_lnotab),
+        .endlinetable_size = (int)PyBytes_GET_SIZE(a->a_enotab),
+        .columntable_size = (int)PyBytes_GET_SIZE(a->a_cnotab),
 
         .consts = consts,
         .names = names,

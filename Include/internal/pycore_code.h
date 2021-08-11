@@ -218,9 +218,12 @@ struct _PyCodeConstructor {
     /* the code */
     PyObject *code;
     int firstlineno;
-    PyObject *linetable;
-    PyObject *endlinetable;
-    PyObject *columntable;
+    const char *linetable_ptr;
+    const char *endlinetable_ptr;
+    const char *columntable_ptr;
+    int linetable_size;
+    int endlinetable_size;
+    int columntable_size;
 
     /* used by the code */
     PyObject *consts;

@@ -211,9 +211,9 @@ code_replace(PyCodeObject *self, PyObject *const *args, Py_ssize_t nargs, PyObje
     PyObject *co_filename = self->co_filename;
     PyObject *co_name = self->co_name;
     PyObject *co_qualname = self->co_qualname;
-    PyBytesObject *co_linetable = (PyBytesObject *)self->co_linetable;
-    PyObject *co_endlinetable = self->co_endlinetable;
-    PyObject *co_columntable = self->co_columntable;
+    PyBytesObject *co_linetable = NULL;
+    PyObject *co_endlinetable = NULL;
+    PyObject *co_columntable = NULL;
     PyBytesObject *co_exceptiontable = (PyBytesObject *)self->co_exceptiontable;
 
     args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 0, 0, 0, argsbuf);
@@ -390,19 +390,16 @@ code_replace(PyCodeObject *self, PyObject *const *args, Py_ssize_t nargs, PyObje
             _PyArg_BadArgument("replace", "argument 'co_linetable'", "bytes", args[16]);
             goto exit;
         }
-        co_linetable = (PyBytesObject *)args[16];
         if (!--noptargs) {
             goto skip_optional_kwonly;
         }
     }
     if (args[17]) {
-        co_endlinetable = args[17];
         if (!--noptargs) {
             goto skip_optional_kwonly;
         }
     }
     if (args[18]) {
-        co_columntable = args[18];
         if (!--noptargs) {
             goto skip_optional_kwonly;
         }
@@ -413,7 +410,10 @@ code_replace(PyCodeObject *self, PyObject *const *args, Py_ssize_t nargs, PyObje
     }
     co_exceptiontable = (PyBytesObject *)args[19];
 skip_optional_kwonly:
-    return_value = code_replace_impl(self, co_argcount, co_posonlyargcount, co_kwonlyargcount, co_nlocals, co_stacksize, co_flags, co_firstlineno, co_code, co_consts, co_names, co_varnames, co_freevars, co_cellvars, co_filename, co_name, co_qualname, co_linetable, co_endlinetable, co_columntable, co_exceptiontable);
+    return_value = code_replace_impl(self, co_argcount, co_posonlyargcount, co_kwonlyargcount, co_nlocals, co_stacksize, co_flags, co_firstlineno,
+    co_code, co_consts, co_names, co_varnames, co_freevars, co_cellvars, co_filename, co_name, co_qualname,
+    co_linetable, co_endlinetable, co_columntable,
+    co_exceptiontable);
 
 exit:
     return return_value;

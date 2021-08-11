@@ -76,13 +76,20 @@ struct PyCodeObject {
     PyObject *co_filename;      /* unicode (where it was loaded from) */
     PyObject *co_name;          /* unicode (name, for reference) */
     PyObject *co_qualname;      /* unicode (qualname, for reference) */
-    PyObject *co_linetable;     /* bytes (encoding addr<->lineno mapping) See
-                                   Objects/lnotab_notes.txt for details. */
-    PyObject *co_endlinetable;  /* bytes object that holds end lineno for
-                                   instructions separated across different
-                                   lines */
-    PyObject *co_columntable;   /* bytes object that holds start/end column
-                                   offset each instruction */
+
+    // The following used to be PyObject*, now they point straight into
+    // PYC memory.  The downside is that we need the sizes as well.
+    // Those are combined so we don't waste space due to alighment.
+    const char *co_linetable_ptr; /* bytes (encoding addr<->lineno mapping) See
+                                     Objects/lnotab_notes.txt for details. */
+    const char *co_endlinetable_ptr; /* bytes object that holds end lineno for
+                                        instructions separated across different
+                                        lines */
+    const char *co_columntable_ptr; /* bytes object that holds start/end column
+                                       offset each instruction */
+    int co_linetable_size;
+    int co_endlinetable_size;
+    int co_columntable_size;
 
     /* These fields are set with computed values on new code objects. */
 
@@ -157,18 +164,55 @@ PyAPI_DATA(PyTypeObject) PyCode_Type;
 #define PyCode_GetNumFree(op) ((op)->co_nfreevars)
 
 /* Public interface */
-PyAPI_FUNC(PyCodeObject *) PyCode_New(
-        int, int, int, int, int, PyObject *, PyObject *,
-        PyObject *, PyObject *, PyObject *, PyObject *,
-        PyObject *, PyObject *, PyObject *, int, PyObject *,
-        PyObject *, PyObject *, PyObject *);
-
 PyAPI_FUNC(PyCodeObject *) PyCode_NewWithPosOnlyArgs(
-        int, int, int, int, int, int, PyObject *, PyObject *,
-        PyObject *, PyObject *, PyObject *, PyObject *,
-        PyObject *, PyObject *, PyObject *, int, PyObject *,
-        PyObject *, PyObject *, PyObject *);
-        /* same as struct above */
+   int argcount,
+   int posonlyargcount,  // This one's not present on PyCode_New
+   int kwonlyargcount,
+   int nlocals, 
+   int stacksize,
+   int flags,
+   PyObject *code,
+   PyObject *consts,
+   PyObject *names,
+   PyObject *varnames,
+   PyObject *freevars,
+   PyObject *cellvars,
+   PyObject *filename,
+   PyObject *name,
+   PyObject *qualname,
+   int firstlineno,
+   const char *linetable_ptr,
+   int linetable_size,
+   const char *endlinetable_ptr,
+   int endlinetable_size,
+   const char *columntable_ptr,
+   int columntable_size,
+   PyObject *exceptiontable);
+
+/* "Legacy" public interface (lacking posinlyargcount) */
+PyAPI_FUNC(PyCodeObject *) PyCode_New(
+   int argcount,
+   int kwonlyargcount,
+   int nlocals, 
+   int stacksize,
+   int flags,
+   PyObject *code,
+   PyObject *consts,
+   PyObject *names,
+   PyObject *varnames,
+   PyObject *freevars,
+   PyObject *cellvars,
+   PyObject *filename,
+   PyObject *name,
+   PyObject *qualname,
+   int firstlineno,
+   const char *linetable_ptr,
+   int linetable_size,
+   const char *endlinetable_ptr,
+   int endlinetable_size,
+   const char *columntable_ptr,
+   int columntable_size,
+   PyObject *exceptiontable);
 
 /* Creates a new empty code object with the specified source location. */
 PyAPI_FUNC(PyCodeObject *)
