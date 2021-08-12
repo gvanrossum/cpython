@@ -250,15 +250,9 @@ _PyCode_Validate(struct _PyCodeConstructor *con)
         con->name == NULL || !PyUnicode_Check(con->name) ||
         con->qualname == NULL || !PyUnicode_Check(con->qualname) ||
         con->filename == NULL || !PyUnicode_Check(con->filename) ||
-        /* TODO TODO
-        con->linetable == NULL || !PyBytes_Check(con->linetable) ||
-        con->endlinetable == NULL ||
-        (con->endlinetable != Py_None && !PyBytes_Check(con->endlinetable)) ||
-        con->columntable == NULL ||
-        (con->columntable != Py_None && !PyBytes_Check(con->columntable)) ||
-        */
         con->exceptiontable == NULL || !PyBytes_Check(con->exceptiontable)
-        ) {
+        )
+    {
         PyErr_BadInternalCall();
         return -1;
     }
@@ -372,6 +366,7 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
     co->co_hydra_context = con->hydra_context;
     co->co_hydra_offset = con->hydra_offset;
     co->co_hydra_refs_pos = con->hydra_refs_pos;
+    co->co_refs = NULL;
 
     /* derived values */
     co->co_varnames = NULL;
@@ -489,6 +484,26 @@ _PyCode_Update(struct _PyCodeConstructor *con, PyCodeObject *code)
     return code;
 }
 
+// This leaks rather than force error checks on the caller.
+void
+_PyCode_AddRef(PyCodeObject *code, PyObject *ref)
+{
+    if (ref == NULL)
+        return;  // _PyCode_AddRef(code, NULL) is legit!
+    if (code->co_refs == NULL) {
+        code->co_refs = PyList_New(0);
+        if (code->co_refs == NULL) {
+            PyErr_Clear();
+            Py_INCREF(ref);
+            return;
+        }
+        if (PyList_Append(code->co_refs, ref) < 0) {
+            PyErr_Clear();
+            Py_INCREF(ref);
+            return;
+        }
+    }
+}
 
 
 /******************
@@ -1389,7 +1404,7 @@ code_new_impl(PyTypeObject *type, int argcount, int posonlyargcount,
               PyObject *cellvars)
 /*[clinic end generated code: output=e1d2086aa8da7c08 input=a06cd92369134063]*/
 {
-    PyObject *co = NULL;
+    PyCodeObject *co = NULL;
     PyObject *ournames = NULL;
     PyObject *ourvarnames = NULL;
     PyObject *ourfreevars = NULL;
@@ -1458,30 +1473,31 @@ code_new_impl(PyTypeObject *type, int argcount, int posonlyargcount,
     if (ourcellvars == NULL)
         goto cleanup;
 
-    // TODO TODO Add these references to the code object
-    Py_INCREF(linetable);
-    Py_INCREF(endlinetable);
-    Py_INCREF(columntable);
-    co = (PyObject *)PyCode_NewWithPosOnlyArgs(argcount, posonlyargcount,
-                                               kwonlyargcount,
-                                               nlocals, stacksize, flags,
-                                               code, consts, ournames,
-                                               ourvarnames, ourfreevars,
-                                               ourcellvars, filename,
-                                               name, qualname, firstlineno,
-                                               PyBytes_AS_STRING(linetable),
-                                               (int)PyBytes_GET_SIZE(linetable),
-                                               PyBytes_AS_STRING(endlinetable),
-                                               (int)PyBytes_GET_SIZE(endlinetable),
-                                               PyBytes_AS_STRING(columntable),
-                                               (int)PyBytes_GET_SIZE(columntable),
-                                               exceptiontable);
+    co = PyCode_NewWithPosOnlyArgs(argcount, posonlyargcount,
+                                   kwonlyargcount,
+                                   nlocals, stacksize, flags,
+                                   code, consts, ournames,
+                                   ourvarnames, ourfreevars,
+                                   ourcellvars, filename,
+                                   name, qualname, firstlineno,
+                                   PyBytes_AS_STRING(linetable),
+                                   (int)PyBytes_GET_SIZE(linetable),
+                                   PyBytes_AS_STRING(endlinetable),
+                                   (int)PyBytes_GET_SIZE(endlinetable),
+                                   PyBytes_AS_STRING(columntable),
+                                   (int)PyBytes_GET_SIZE(columntable),
+                                   exceptiontable);
+    if (co != NULL) {
+        _PyCode_AddRef(co, linetable);
+        _PyCode_AddRef(co, endlinetable);
+        _PyCode_AddRef(co, columntable);
+    }
   cleanup:
     Py_XDECREF(ournames);
     Py_XDECREF(ourvarnames);
     Py_XDECREF(ourfreevars);
     Py_XDECREF(ourcellvars);
-    return co;
+    return (PyObject *)co;
 }
 
 static void
@@ -1513,11 +1529,9 @@ code_dealloc(PyCodeObject *co)
     Py_XDECREF(co->co_filename);
     Py_XDECREF(co->co_name);
     Py_XDECREF(co->co_qualname);
-    // Py_XDECREF(co->co_linetable);
-    // Py_XDECREF(co->co_endlinetable);
-    // Py_XDECREF(co->co_columntable);
     Py_XDECREF(co->co_exceptiontable);
     Py_XDECREF(co->co_hydra_context);
+    Py_XDECREF(co->co_refs);
     if (co->co_weakreflist != NULL)
         PyObject_ClearWeakRefs((PyObject*)co);
     if (co->co_quickened) {
@@ -1890,10 +1904,6 @@ code_replace_impl(PyCodeObject *self, int co_argcount,
         columntable_size = (int)PyBytes_GET_SIZE(co_columntable);
     }
 
-    // TODO TODO Add these refs to the code object
-    Py_XINCREF(co_linetable);
-    Py_XINCREF(co_endlinetable);
-    Py_XINCREF(co_columntable);
     co = PyCode_NewWithPosOnlyArgs(
         co_argcount, co_posonlyargcount, co_kwonlyargcount, co_nlocals,
         co_stacksize, co_flags, (PyObject*)co_code, co_consts, co_names,
@@ -1903,6 +1913,11 @@ code_replace_impl(PyCodeObject *self, int co_argcount,
         endlinetable_ptr, endlinetable_size,
         columntable_ptr, columntable_size,
         (PyObject*)co_exceptiontable);
+    if (co != NULL) {
+        _PyCode_AddRef(co, (PyObject *)co_linetable);
+        _PyCode_AddRef(co, co_endlinetable);
+        _PyCode_AddRef(co, co_columntable);
+    }
 
 error:
     Py_XDECREF(varnames);

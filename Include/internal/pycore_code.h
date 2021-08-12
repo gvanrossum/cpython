@@ -274,6 +274,8 @@ PyAPI_FUNC(PyObject *) _PyCode_GetVarnames(PyCodeObject *);
 PyAPI_FUNC(PyObject *) _PyCode_GetCellvars(PyCodeObject *);
 PyAPI_FUNC(PyObject *) _PyCode_GetFreevars(PyCodeObject *);
 
+void _PyCode_AddRef(PyCodeObject *, PyObject *);
+
 
 /* Cache hits and misses */
 

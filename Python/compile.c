@@ -7428,11 +7428,6 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
     }
     compute_localsplus_info(c, nlocalsplus, localsplusnames, localspluskinds);
 
-    // TODO TODO Don't leak these, find a way to incorporate them in the object
-    Py_INCREF(a->a_lnotab);
-    Py_INCREF(a->a_enotab);
-    Py_INCREF(a->a_cnotab);
-
     struct _PyCodeConstructor con = {
         .filename = c->c_filename,
         .name = c->u->u_name,
@@ -7478,6 +7473,9 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
     if (co == NULL) {
         goto error;
     }
+    _PyCode_AddRef(co, a->a_lnotab);
+    _PyCode_AddRef(co, a->a_enotab);
+    _PyCode_AddRef(co, a->a_cnotab);
 
  error:
     Py_XDECREF(names);
