@@ -497,11 +497,11 @@ _PyCode_AddRef(PyCodeObject *code, PyObject *ref)
             Py_INCREF(ref);
             return;
         }
-        if (PyList_Append(code->co_refs, ref) < 0) {
-            PyErr_Clear();
-            Py_INCREF(ref);
-            return;
-        }
+    }
+    if (PyList_Append(code->co_refs, ref) < 0) {
+        PyErr_Clear();
+        Py_INCREF(ref);
+        return;
     }
 }
 
