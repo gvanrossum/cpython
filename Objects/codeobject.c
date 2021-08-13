@@ -497,6 +497,7 @@ _PyCode_AddRef(PyCodeObject *code, PyObject *ref)
             Py_INCREF(ref);
             return;
         }
+        PyObject_GC_UnTrack(code->co_refs);  // We're not participating in GC
     }
     if (PyList_Append(code->co_refs, ref) < 0) {
         PyErr_Clear();

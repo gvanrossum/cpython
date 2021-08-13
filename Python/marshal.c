@@ -760,6 +760,7 @@ typedef struct {
     PyObject *refs;  /* a list */
     Py_ssize_t refs_pos;  /* Where in refs to insert/append */
     _PyHydrationContext *ctx;
+    PyObject *baseobj;
 } RFILE;
 
 static const char *
@@ -1090,7 +1091,47 @@ r_ref(PyObject *o, int flag, RFILE *p)
     return o;
 }
 
-static const char *r_fake_object(RFILE *p, int *p_size);
+static PyObject *r_object(RFILE *p);
+
+static const char *
+r_fake_object(RFILE *p, int *p_size)
+{
+    if (p->baseobj == NULL) {
+        PyObject *res = r_object(p);
+        if (res == NULL) {
+            return NULL;
+        }
+        if (!PyBytes_CheckExact(res)) {
+            PyErr_SetString(PyExc_ValueError, "expected bytes object in r_fake");
+            return NULL;
+        }
+        // In this case, just leak the object (it's only used during bootstrap)
+        // TODO TODO return that object and call _PyCode_AddRef() on it later
+        *p_size = (int)PyBytes_GET_SIZE(res);
+        return PyBytes_AS_STRING(res);
+    }
+    int type = r_byte(p);
+    if (type != TYPE_STRING) {
+        printf("type = 0x%x (%c)\n", type, type);
+        PyErr_SetString(PyExc_ValueError, "expected TYPE_STRING code in r_fake");
+        return NULL;
+    }
+    int size = r_long(p);
+    if (size == -1 && PyErr_Occurred()) {
+        return NULL;
+    }
+    if (size < 0 || size > SIZE32_MAX) {
+        PyErr_SetString(PyExc_ValueError,
+                        "bad marshal data (bytes object size out of range) in r_fake");
+        return NULL;
+    }
+    const char *ptr = r_string(size, p);
+    if (ptr == NULL) {
+        return NULL;
+    }
+    *p_size = size;
+    return ptr;
+}
 
 static PyObject *
 r_object(RFILE *p)
@@ -1628,6 +1669,8 @@ r_object(RFILE *p)
                 printf("Failed to create code object\n");  // TODO: delete
                 goto code_error;
             }
+            assert(PyCode_Check(v));
+            _PyCode_AddRef((PyCodeObject *)v, p->baseobj);
 
             if (first_ref >= 0) {
                 // Overwrite skipped references with v
@@ -1706,22 +1749,6 @@ r_object(RFILE *p)
     return retval;
 }
 
-static const char *
-r_fake_object(RFILE *p, int *p_size)
-{
-    // TODO TODO avoid the copy!!!
-    PyObject *obj = r_object(p);
-    if (obj == NULL)
-        return NULL;
-    if (!PyBytes_CheckExact(obj)) {
-        PyErr_BadArgument();
-        return NULL;
-    }
-    // TODO TODO: check size
-    *p_size = (int)PyBytes_GET_SIZE(obj);
-    return PyBytes_AS_STRING(obj);  // TODO TODO: Leaks obj!
-}
-
 static PyObject *
 read_object(RFILE *p)
 {
@@ -1757,6 +1784,7 @@ PyMarshal_ReadShortFromFile(FILE *fp)
     rf.end = rf.ptr = NULL;
     rf.buf = NULL;
     rf.ctx = NULL;
+    rf.baseobj = NULL;
     res = r_short(&rf);
     if (rf.buf != NULL)
         PyMem_Free(rf.buf);
@@ -1773,6 +1801,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
     rf.ptr = rf.end = NULL;
     rf.buf = NULL;
     rf.ctx = NULL;
+    rf.baseobj = NULL;
     res = r_long(&rf);
     if (rf.buf != NULL)
         PyMem_Free(rf.buf);
@@ -1841,6 +1870,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
     PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
+    rf.baseobj = NULL;
     result = read_object(&rf);
     Py_DECREF(rf.refs);
     if (rf.buf != NULL)
@@ -1865,6 +1895,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
     PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
+    rf.baseobj = NULL;
     result = read_object(&rf);
     Py_DECREF(rf.refs);
     if (rf.buf != NULL)
@@ -2000,6 +2031,7 @@ marshal_load(PyObject *module, PyObject *file)
             PyObject_GC_UnTrack(rf.refs);
             rf.refs_pos = 0;
             rf.ctx = NULL;
+            rf.baseobj = NULL;
             result = read_object(&rf);
             Py_DECREF(rf.refs);
             if (rf.buf != NULL)
@@ -2065,6 +2097,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes, int lazy)
     PyObject_GC_UnTrack(rf.refs);
     rf.refs_pos = 0;
     rf.ctx = NULL;
+    rf.baseobj = bytes->obj;  // The backing store
     if (lazy < 0)
         lazy = getenv("LAZY") && *getenv("LAZY");  // TODO: Rename?
     if (lazy) {
