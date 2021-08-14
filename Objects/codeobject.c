@@ -1868,7 +1868,8 @@ code_replace_impl(PyCodeObject *self, int co_argcount,
 #undef CHECK_INT_ARG
 
     if (PySys_Audit("code.__new__", "OOOOiiiiii",
-                    co_code, co_filename, co_name, co_qualname, co_argcount,
+                    co_code != NULL ? (PyObject *)co_code : Py_None,
+                    co_filename, co_name, co_qualname, co_argcount,
                     co_posonlyargcount, co_kwonlyargcount, co_nlocals,
                     co_stacksize, co_flags) < 0) {
         return NULL;
