@@ -72,6 +72,7 @@ module marshal
 #define TYPE_SMALL_TUPLE        ')'
 #define TYPE_SHORT_ASCII        'z'
 #define TYPE_SHORT_ASCII_INTERNED 'Z'
+#define TYPE_PAD                '_'
 
 #define WFERR_OK 0
 #define WFERR_UNMARSHALLABLE 1
@@ -399,9 +400,14 @@ w_object(PyObject *v, WFILE *p)
 static void
 w_fake_object(const char *ptr, int size, WFILE *p)
 {
+    Py_ssize_t dest = (Py_ssize_t)(p->ptr);
+    if (!(dest & 1)) {
+        w_byte(TYPE_PAD, p);
+    }
     w_byte(TYPE_STRING, p);
-    w_pstring(ptr, size, p);
+    assert((((Py_ssize_t)(p->ptr)) & 1) == 0);
 
+    w_pstring(ptr, size, p);
 }
 
 #define W_FAKE_OBJECT(prefix, p) w_fake_object(prefix##_ptr, prefix##_size, p)
@@ -1110,7 +1116,10 @@ r_fake_object(RFILE *p, int *p_size)
         *p_size = (int)PyBytes_GET_SIZE(res);
         return PyBytes_AS_STRING(res);
     }
-    int type = r_byte(p);
+    int type;
+    do {
+        type = r_byte(p);
+    } while (type == TYPE_PAD);
     if (type != TYPE_STRING) {
         printf("type = 0x%x (%c)\n", type, type);
         PyErr_SetString(PyExc_ValueError, "expected TYPE_STRING code in r_fake");
@@ -1141,9 +1150,14 @@ r_object(RFILE *p)
     PyObject *v, *v2;
     Py_ssize_t idx = 0;
     long i, n;
-    int type, code = r_byte(p);
+    int type, code;
     int flag, is_interned = 0;
     PyObject *retval = NULL;
+
+    // Skip padding
+    do {
+        code = r_byte(p);
+    } while (code == TYPE_PAD);
 
     if (code == EOF) {
         PyErr_SetString(PyExc_EOFError,
@@ -2145,6 +2159,7 @@ _PyCode_Hydrate(PyCodeObject *code)
     Py_XINCREF(rf.refs);
     rf.refs_pos = code->co_hydra_refs_pos;
     rf.ctx = ctx;
+    rf.baseobj = ctx->obj;
     Py_INCREF(code);
     ctx->code = code;
 
