@@ -214,7 +214,7 @@ code_replace(PyCodeObject *self, PyObject *const *args, Py_ssize_t nargs, PyObje
     PyBytesObject *co_linetable = NULL;
     PyObject *co_endlinetable = NULL;
     PyObject *co_columntable = NULL;
-    PyBytesObject *co_exceptiontable = (PyBytesObject *)self->co_exceptiontable;
+    PyBytesObject *co_exceptiontable = NULL;
 
     args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 0, 0, 0, argsbuf);
     if (!args) {
@@ -455,4 +455,4 @@ code__varname_from_oparg(PyCodeObject *self, PyObject *const *args, Py_ssize_t n
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=f0b4a7c7b68f0a84 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=fc01d096430e019a input=a9049054013a1b77]*/

@@ -7440,11 +7440,13 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
         .linetable_ptr = PyBytes_AS_STRING(a->a_lnotab),
         .endlinetable_ptr = PyBytes_AS_STRING(a->a_enotab),
         .columntable_ptr = PyBytes_AS_STRING(a->a_cnotab),
+        .exceptiontable_ptr = PyBytes_AS_STRING(a->a_except_table),
 
         .code_size = (int)PyBytes_GET_SIZE(a->a_bytecode),
         .linetable_size = (int)PyBytes_GET_SIZE(a->a_lnotab),
         .endlinetable_size = (int)PyBytes_GET_SIZE(a->a_enotab),
         .columntable_size = (int)PyBytes_GET_SIZE(a->a_cnotab),
+        .exceptiontable_size = PyBytes_GET_SIZE(a->a_except_table),
 
         .consts = consts,
         .names = names,
@@ -7458,7 +7460,6 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
 
         .stacksize = maxdepth,
 
-        .exceptiontable = a->a_except_table,
     };
 
     if (_PyCode_Validate(&con) < 0) {
@@ -7478,6 +7479,7 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
     _PyCode_AddRef(co, a->a_lnotab);
     _PyCode_AddRef(co, a->a_enotab);
     _PyCode_AddRef(co, a->a_cnotab);
+    _PyCode_AddRef(co, a->a_except_table);
 
  error:
     Py_XDECREF(names);

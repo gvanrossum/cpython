@@ -582,7 +582,7 @@ w_complex_object(PyObject *v, char flag, WFILE *p)
         W_FAKE_OBJECT(co->co_linetable, p);
         W_FAKE_OBJECT(co->co_endlinetable, p);
         W_FAKE_OBJECT(co->co_columntable, p);
-        w_object(co->co_exceptiontable, p);
+        W_FAKE_OBJECT(co->co_exceptiontable, p);
         w_object(co->co_consts, p);
         w_backpatch(p, start_pos, start_nrefs);
     }
@@ -1539,11 +1539,12 @@ r_object(RFILE *p)
             const char *linetable_ptr = NULL;
             const char *endlinetable_ptr = NULL;
             const char *columntable_ptr = NULL;
+            const char *exceptiontable_ptr = NULL;
             int code_size = 0;
             int linetable_size = 0;
             int endlinetable_size = 0;
             int columntable_size = 0;
-            PyObject *exceptiontable = NULL;
+            int exceptiontable_size = 0;
             // TODO: Optimization: read most valules directly into 'con'
             struct _PyCodeConstructor con = { 0 };  // All zeros
             Py_ssize_t first_ref = -1;
@@ -1646,8 +1647,8 @@ r_object(RFILE *p)
                 columntable_ptr = r_fake_object(p, &columntable_size);
                 if (columntable_ptr == NULL)
                     goto code_error;
-                exceptiontable = r_object(p);
-                if (exceptiontable == NULL)
+                exceptiontable_ptr = r_fake_object(p, &exceptiontable_size);
+                if (exceptiontable_ptr == NULL)
                     goto code_error;
                 consts = r_object(p);
                 if (consts == NULL)
@@ -1662,13 +1663,13 @@ r_object(RFILE *p)
                 con.linetable_ptr = linetable_ptr;
                 con.endlinetable_ptr = endlinetable_ptr;
                 con.columntable_ptr = columntable_ptr;
+                con.exceptiontable_ptr = exceptiontable_ptr;
 
                 con.code_size = code_size;
                 con.linetable_size = linetable_size;
                 con.endlinetable_size = endlinetable_size;
                 con.columntable_size = columntable_size;
-
-                con.exceptiontable = exceptiontable;
+                con.exceptiontable_size = exceptiontable_size;
 
                 if (_PyCode_Validate(&con) < 0) {
                     printf("Failed to validate code object\n");  // TODO: delete
@@ -1707,10 +1708,6 @@ r_object(RFILE *p)
             Py_XDECREF(filename);
             Py_XDECREF(name);
             Py_XDECREF(qualname);
-            // Py_XDECREF(linetable);
-            // Py_XDECREF(endlinetable);
-            // Py_XDECREF(columntable);
-            Py_XDECREF(exceptiontable);
         }
         retval = v;
         break;

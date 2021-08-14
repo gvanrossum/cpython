@@ -60,7 +60,7 @@ struct PyCodeObject {
     _Py_CODEUNIT *co_firstinstr; /* Pointer to first instruction, used for quickening.
                                     Unlike the other "hot" fields, this one is
                                     actually derived from co_code. */
-    PyObject *co_exceptiontable; /* Byte string encoding exception handling table */
+    const char *co_exceptiontable_ptr; /* exception handling table */
     int co_flags;               /* CO_..., see below */
     int co_warmup;              /* Warmup counter for quickening */
 
@@ -91,6 +91,7 @@ struct PyCodeObject {
     int co_linetable_size;
     int co_endlinetable_size;
     int co_columntable_size;
+    int co_exceptiontable_size;
 
     /* These fields are set with computed values on new code objects. */
 
@@ -190,7 +191,8 @@ PyAPI_FUNC(PyCodeObject *) PyCode_NewWithPosOnlyArgs(
     int endlinetable_size,
     const char *columntable_ptr,
     int columntable_size,
-    PyObject *exceptiontable);
+    const char *exceptiontable_ptr,
+    int exceptiontable_size);
 
 /* "Legacy" public interface (lacking posinlyargcount) */
 PyAPI_FUNC(PyCodeObject *) PyCode_New(
@@ -216,7 +218,8 @@ PyAPI_FUNC(PyCodeObject *) PyCode_New(
     int endlinetable_size,
     const char *columntable_ptr,
     int columntable_size,
-    PyObject *exceptiontable);
+    const char *exceptiontable_ptr,
+    int exceptiontable_size);
 
 /* Creates a new empty code object with the specified source location. */
 PyAPI_FUNC(PyCodeObject *)

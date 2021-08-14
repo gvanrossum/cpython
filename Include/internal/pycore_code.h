@@ -215,16 +215,18 @@ struct _PyCodeConstructor {
     PyObject *qualname;
     int flags;
 
-    /* the code */
+    /* the code */  // TODO TODO update comments, some tables are metadata
     int firstlineno;
     const char *code_ptr;
     const char *linetable_ptr;
     const char *endlinetable_ptr;
     const char *columntable_ptr;
+    const char *exceptiontable_ptr;
     int code_size;
     int linetable_size;
     int endlinetable_size;
     int columntable_size;
+    int exceptiontable_size;
 
     /* used by the code */
     PyObject *consts;
@@ -242,9 +244,6 @@ struct _PyCodeConstructor {
 
     /* needed to create the frame */
     int stacksize;
-
-    /* used by the eval loop */
-    PyObject *exceptiontable;
 
     /* Hydration */
     struct hydration_context *hydra_context;  // Hydration context
