@@ -7446,7 +7446,7 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
         .linetable_size = (int)PyBytes_GET_SIZE(a->a_lnotab),
         .endlinetable_size = (int)PyBytes_GET_SIZE(a->a_enotab),
         .columntable_size = (int)PyBytes_GET_SIZE(a->a_cnotab),
-        .exceptiontable_size = PyBytes_GET_SIZE(a->a_except_table),
+        .exceptiontable_size = (int)PyBytes_GET_SIZE(a->a_except_table),
 
         .consts = consts,
         .names = names,
