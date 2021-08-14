@@ -216,11 +216,12 @@ struct _PyCodeConstructor {
     int flags;
 
     /* the code */
-    PyObject *code;
     int firstlineno;
+    const char *code_ptr;
     const char *linetable_ptr;
     const char *endlinetable_ptr;
     const char *columntable_ptr;
+    int code_size;
     int linetable_size;
     int endlinetable_size;
     int columntable_size;

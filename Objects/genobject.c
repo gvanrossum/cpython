@@ -176,7 +176,7 @@ gen_send_ex2(PyGenObject *gen, PyObject *arg, PyObject **presult,
     }
 
     assert(_PyFrame_IsRunnable(f));
-    assert(f->f_lasti >= 0 || ((unsigned char *)PyBytes_AS_STRING(gen->gi_code->co_code))[0] == GEN_START);
+    assert(f->f_lasti >= 0 || ((unsigned char *)(gen->gi_code->co_code_ptr))[0] == GEN_START);
     /* Push arg onto the frame's value stack */
     result = arg ? arg : Py_None;
     Py_INCREF(result);
@@ -331,8 +331,8 @@ _PyGen_yf(PyGenObject *gen)
     PyFrameObject *f = gen->gi_frame;
 
     if (f) {
-        PyObject *bytecode = gen->gi_code->co_code;
-        unsigned char *code = (unsigned char *)PyBytes_AS_STRING(bytecode);
+        const char *bytecode = gen->gi_code->co_code_ptr;
+        const unsigned char *code = (const unsigned char *)bytecode;
 
         if (f->f_lasti < 0) {
             /* Return immediately if the frame didn't start yet. YIELD_FROM

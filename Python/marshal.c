@@ -569,7 +569,7 @@ w_complex_object(PyObject *v, char flag, WFILE *p)
         w_object(co->co_qualname, p);
         w_object(co->co_filename, p);
 
-        w_object(co->co_code, p);
+        W_FAKE_OBJECT(co->co_code, p);
         w_object(co->co_names, p);
         w_object(co->co_localsplusnames, p);
         w_object(co->co_localspluskinds, p);
@@ -1516,15 +1516,16 @@ r_object(RFILE *p)
             int firstlineno;
             PyObject *name = NULL;
             PyObject *qualname = NULL;
-            PyObject *code = NULL;
             PyObject *filename = NULL;
             PyObject *consts = NULL;
             PyObject *names = NULL;
             PyObject *localsplusnames = NULL;
             PyObject *localspluskinds = NULL;
+            const char *code_ptr = NULL;
             const char *linetable_ptr = NULL;
             const char *endlinetable_ptr = NULL;
             const char *columntable_ptr = NULL;
+            int code_size = 0;
             int linetable_size = 0;
             int endlinetable_size = 0;
             int columntable_size = 0;
@@ -1610,8 +1611,8 @@ r_object(RFILE *p)
                     to_update = p->ctx->code;
                     p->ctx->code = NULL;
                 }
-                code = r_object(p);
-                if (code == NULL)
+                code_ptr = r_fake_object(p, &code_size);
+                if (code_ptr == NULL)
                     goto code_error;
                 names = r_object(p);
                 if (names == NULL)
@@ -1638,15 +1639,17 @@ r_object(RFILE *p)
                 if (consts == NULL)
                     goto code_error;
 
-                con.code = code;
                 con.consts = consts;
                 con.names = names;
                 con.localsplusnames = localsplusnames;
                 con.localspluskinds = localspluskinds;
 
+                con.code_ptr = code_ptr;
                 con.linetable_ptr = linetable_ptr;
                 con.endlinetable_ptr = endlinetable_ptr;
                 con.columntable_ptr = columntable_ptr;
+
+                con.code_size = code_size;
                 con.linetable_size = linetable_size;
                 con.endlinetable_size = endlinetable_size;
                 con.columntable_size = columntable_size;
@@ -1683,7 +1686,6 @@ r_object(RFILE *p)
             v = r_ref_insert(v, idx, flag, p);
 
           code_error:
-            Py_XDECREF(code);
             Py_XDECREF(consts);
             Py_XDECREF(names);
             Py_XDECREF(localsplusnames);

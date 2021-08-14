@@ -168,7 +168,7 @@ static int64_t *
 mark_stacks(PyCodeObject *code_obj, int len)
 {
     const _Py_CODEUNIT *code =
-        (const _Py_CODEUNIT *)PyBytes_AS_STRING(code_obj->co_code);
+        (const _Py_CODEUNIT *)(code_obj->co_code_ptr);
     int64_t *stacks = PyMem_New(int64_t, len+1);
     int i, j, opcode;
 
@@ -481,7 +481,7 @@ frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno, void *Py_UNUSED(ignore
 
     /* PyCode_NewWithPosOnlyArgs limits co_code to be under INT_MAX so this
      * should never overflow. */
-    int len = (int)(PyBytes_GET_SIZE(_PyFrame_GetCode(f)->co_code) / sizeof(_Py_CODEUNIT));
+    int len = (int)((_PyFrame_GetCode(f)->co_code_size) / sizeof(_Py_CODEUNIT));
     int *lines = marklines(_PyFrame_GetCode(f), len);
     if (lines == NULL) {
         return -1;
@@ -930,7 +930,7 @@ static int
 _PyFrame_OpAlreadyRan(PyFrameObject *f, int opcode, int oparg)
 {
     const _Py_CODEUNIT *code =
-        (const _Py_CODEUNIT *)PyBytes_AS_STRING(_PyFrame_GetCode(f)->co_code);
+        (const _Py_CODEUNIT *)(_PyFrame_GetCode(f)->co_code_ptr);
     for (int i = 0; i < f->f_lasti; i++) {
         if (_Py_OPCODE(code[i]) == opcode && _Py_OPARG(code[i]) == oparg) {
             return 1;

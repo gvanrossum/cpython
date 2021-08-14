@@ -288,7 +288,7 @@ _Py_Quicken(PyCodeObject *code) {
     if (code->co_quickened) {
         return 0;
     }
-    Py_ssize_t size = PyBytes_GET_SIZE(code->co_code);
+    Py_ssize_t size = code->co_code_size;
     int instr_count = (int)(size/sizeof(_Py_CODEUNIT));
     if (instr_count > MAX_SIZE_TO_QUICKEN) {
         code->co_warmup = QUICKENING_WARMUP_COLDEST;

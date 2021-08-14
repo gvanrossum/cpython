@@ -7434,13 +7434,14 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
         .qualname = c->u->u_qualname ? c->u->u_qualname : c->u->u_name,
         .flags = flags,
 
-        .code = a->a_bytecode,
         .firstlineno = c->u->u_firstlineno,
 
+        .code_ptr = PyBytes_AS_STRING(a->a_bytecode),
         .linetable_ptr = PyBytes_AS_STRING(a->a_lnotab),
         .endlinetable_ptr = PyBytes_AS_STRING(a->a_enotab),
         .columntable_ptr = PyBytes_AS_STRING(a->a_cnotab),
 
+        .code_size = (int)PyBytes_GET_SIZE(a->a_bytecode),
         .linetable_size = (int)PyBytes_GET_SIZE(a->a_lnotab),
         .endlinetable_size = (int)PyBytes_GET_SIZE(a->a_enotab),
         .columntable_size = (int)PyBytes_GET_SIZE(a->a_cnotab),
@@ -7473,6 +7474,7 @@ makecode(struct compiler *c, struct assembler *a, PyObject *constslist,
     if (co == NULL) {
         goto error;
     }
+    _PyCode_AddRef(co, a->a_bytecode);
     _PyCode_AddRef(co, a->a_lnotab);
     _PyCode_AddRef(co, a->a_enotab);
     _PyCode_AddRef(co, a->a_cnotab);

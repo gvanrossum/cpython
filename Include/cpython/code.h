@@ -70,7 +70,6 @@ struct PyCodeObject {
     int co_kwonlyargcount;      /* #keyword only arguments */
     int co_stacksize;           /* #entries needed for evaluation stack */
     int co_firstlineno;         /* first source line number */
-    PyObject *co_code;          /* instruction opcodes */
     PyObject *co_localsplusnames;  /* tuple mapping offsets to names */
     PyObject *co_localspluskinds; /* Bytes mapping to local kinds (one byte per variable) */
     PyObject *co_filename;      /* unicode (where it was loaded from) */
@@ -80,6 +79,7 @@ struct PyCodeObject {
     // The following used to be PyObject*, now they point straight into
     // PYC memory.  The downside is that we need the sizes as well.
     // Those are combined so we don't waste space due to alighment.
+    const char *co_code_ptr;      /* instruction opcodes */
     const char *co_linetable_ptr; /* bytes (encoding addr<->lineno mapping) See
                                      Objects/lnotab_notes.txt for details. */
     const char *co_endlinetable_ptr; /* bytes object that holds end lineno for
@@ -87,6 +87,7 @@ struct PyCodeObject {
                                         lines */
     const char *co_columntable_ptr; /* bytes object that holds start/end column
                                        offset each instruction */
+    int co_code_size;
     int co_linetable_size;
     int co_endlinetable_size;
     int co_columntable_size;
@@ -166,54 +167,56 @@ PyAPI_DATA(PyTypeObject) PyCode_Type;
 
 /* Public interface */
 PyAPI_FUNC(PyCodeObject *) PyCode_NewWithPosOnlyArgs(
-   int argcount,
-   int posonlyargcount,  // This one's not present on PyCode_New
-   int kwonlyargcount,
-   int nlocals, 
-   int stacksize,
-   int flags,
-   PyObject *code,
-   PyObject *consts,
-   PyObject *names,
-   PyObject *varnames,
-   PyObject *freevars,
-   PyObject *cellvars,
-   PyObject *filename,
-   PyObject *name,
-   PyObject *qualname,
-   int firstlineno,
-   const char *linetable_ptr,
-   int linetable_size,
-   const char *endlinetable_ptr,
-   int endlinetable_size,
-   const char *columntable_ptr,
-   int columntable_size,
-   PyObject *exceptiontable);
+    int argcount,
+    int posonlyargcount,  // This one's not present on PyCode_New
+    int kwonlyargcount,
+    int nlocals, 
+    int stacksize,
+    int flags,
+    const char *code_ptr,
+    int code_size,
+    PyObject *consts,
+    PyObject *names,
+    PyObject *varnames,
+    PyObject *freevars,
+    PyObject *cellvars,
+    PyObject *filename,
+    PyObject *name,
+    PyObject *qualname,
+    int firstlineno,
+    const char *linetable_ptr,
+    int linetable_size,
+    const char *endlinetable_ptr,
+    int endlinetable_size,
+    const char *columntable_ptr,
+    int columntable_size,
+    PyObject *exceptiontable);
 
 /* "Legacy" public interface (lacking posinlyargcount) */
 PyAPI_FUNC(PyCodeObject *) PyCode_New(
-   int argcount,
-   int kwonlyargcount,
-   int nlocals, 
-   int stacksize,
-   int flags,
-   PyObject *code,
-   PyObject *consts,
-   PyObject *names,
-   PyObject *varnames,
-   PyObject *freevars,
-   PyObject *cellvars,
-   PyObject *filename,
-   PyObject *name,
-   PyObject *qualname,
-   int firstlineno,
-   const char *linetable_ptr,
-   int linetable_size,
-   const char *endlinetable_ptr,
-   int endlinetable_size,
-   const char *columntable_ptr,
-   int columntable_size,
-   PyObject *exceptiontable);
+    int argcount,
+    int kwonlyargcount,
+    int nlocals, 
+    int stacksize,
+    int flags,
+    const char *code_ptr,
+    int code_size,
+    PyObject *consts,
+    PyObject *names,
+    PyObject *varnames,
+    PyObject *freevars,
+    PyObject *cellvars,
+    PyObject *filename,
+    PyObject *name,
+    PyObject *qualname,
+    int firstlineno,
+    const char *linetable_ptr,
+    int linetable_size,
+    const char *endlinetable_ptr,
+    int endlinetable_size,
+    const char *columntable_ptr,
+    int columntable_size,
+    PyObject *exceptiontable);
 
 /* Creates a new empty code object with the specified source location. */
 PyAPI_FUNC(PyCodeObject *)

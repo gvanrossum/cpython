@@ -202,7 +202,7 @@ code_replace(PyCodeObject *self, PyObject *const *args, Py_ssize_t nargs, PyObje
     int co_stacksize = self->co_stacksize;
     int co_flags = self->co_flags;
     int co_firstlineno = self->co_firstlineno;
-    PyBytesObject *co_code = (PyBytesObject *)self->co_code;
+    PyBytesObject *co_code = NULL;
     PyObject *co_consts = self->co_consts;
     PyObject *co_names = self->co_names;
     PyObject *co_varnames = self->co_varnames;
@@ -455,4 +455,4 @@ code__varname_from_oparg(PyCodeObject *self, PyObject *const *args, Py_ssize_t n
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=53548165a6125025 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=f0b4a7c7b68f0a84 input=a9049054013a1b77]*/
