@@ -647,8 +647,15 @@ if 1:
         f1 = lambda x: x.y.z
         f2 = lambda a: a.b.c
 
-        self.assertIs(f1.__code__.co_linetable, f2.__code__.co_linetable)
-        self.assertIs(f1.__code__.co_code, f2.__code__.co_code)
+        # TODO TODO: The semantics here have changed, we no longer
+        # store these as objects.  This means the sharing no longer
+        # happens (sorry @methane).  We need to consider whether
+        # the optimizations made in 3.10 (see the issue) are still
+        # important or whether the savings due to not having objects
+        # at all are better.  (Note that specialization already undoes
+        # the savings due to sharing co_code.)
+        self.assertEqual(f1.__code__.co_linetable, f2.__code__.co_linetable)
+        self.assertEqual(f1.__code__.co_code, f2.__code__.co_code)
 
     # This is a regression test for a CPython specific peephole optimizer
     # implementation bug present in a few releases.  It's assertion verifies
