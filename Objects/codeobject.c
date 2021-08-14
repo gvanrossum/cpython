@@ -1787,6 +1787,31 @@ code_sizeof(PyCodeObject *co, PyObject *Py_UNUSED(args))
 {
     Py_ssize_t res = _PyObject_SIZE(Py_TYPE(co));
 
+    PyObject *co_refs = co->co_refs;
+    if (co_refs != NULL) {
+        // Add size of backing objects in co_refs,
+        // since they are not directly accessible.
+        // TODO TODO: Is this really necessary?
+        assert(PyList_CheckExact(co_refs));
+        Py_ssize_t listsize = _PySys_GetSizeOf(co_refs);
+        if (listsize == -1) {
+            return NULL;
+        }
+        res += listsize;
+        for (int i = 0; i < PyList_GET_SIZE(co_refs); i++) {
+            PyObject *item = PyList_GET_ITEM(co_refs, i);
+            Py_ssize_t itemsize = _PySys_GetSizeOf(item);
+            if (itemsize == -1) {
+                return NULL;
+            }
+            printf("itemsize %zd\n", itemsize);
+            if (PyBytes_CheckExact(item)) {
+                printf("  bytes size %zd\n", PyBytes_GET_SIZE(item));
+            }
+            res += itemsize;
+        }
+    }
+
     _PyCodeObjectExtra *co_extra = (_PyCodeObjectExtra*) co->co_extra;
     if (co_extra != NULL) {
         res += sizeof(_PyCodeObjectExtra) +
