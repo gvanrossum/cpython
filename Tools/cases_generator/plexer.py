@@ -83,7 +83,7 @@ class PLexer:
             self.filename, tkn.line, tkn.column, self.extract_line(tkn.line))
 
 
-if __name__ == "__main__":
+def main():
     import sys
     if sys.argv[1:]:
         filename = sys.argv[1]
@@ -102,3 +102,7 @@ if __name__ == "__main__":
         left = repr(tok)
         right = lx.to_text([tok]).rstrip()
         print(f"{left:40.40} {right}")
+
+
+if __name__ == "__main__":
+    main()

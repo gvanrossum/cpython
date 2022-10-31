@@ -134,7 +134,7 @@ class Parser(sparser.SParser):
         return None
 
 
-if __name__ == "__main__":
+def main():
     import sys
     filename = sys.argv[1]
     with open(filename) as f:
@@ -146,3 +146,7 @@ if __name__ == "__main__":
     parser = Parser(src, filename)
     x = parser.inst_def()
     print(x)
+
+
+if __name__ == "__main__":
+    main()

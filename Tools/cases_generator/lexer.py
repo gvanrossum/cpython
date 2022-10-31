@@ -245,7 +245,7 @@ def to_text(tkns: list[Token], dedent: int = 0) -> str:
     return ''.join(res)
 
 
-if __name__ == "__main__":
+def main():
     import sys
     filename = sys.argv[1]
     if filename == "-c":
@@ -255,3 +255,7 @@ if __name__ == "__main__":
     # print(to_text(tokenize(src)))
     for tkn in tokenize(src, filename=filename):
         print(tkn)
+
+
+if __name__ == "__main__":
+    main()

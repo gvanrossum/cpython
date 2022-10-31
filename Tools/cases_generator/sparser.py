@@ -301,7 +301,7 @@ class SParser(EParser):
                                 return VarDecl(type, name, None)
 
 
-if __name__ == "__main__":
+def main():
     import sys
     if sys.argv[1:]:
         filename = sys.argv[1]
@@ -333,3 +333,7 @@ if __name__ == "__main__":
         print(x)
         print("=== === ===")
         print("OK")
+
+
+if __name__ == "__main__":
+    main()
